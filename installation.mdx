@@ -1,0 +1,555 @@
+---
+title: Installation
+description: Prerequisites, dependencies, and environment setup for Karen - supports Node.js 20+, multiple package managers, and all major LLM providers
+---
+
+# Installation
+
+Get Karen running locally with this comprehensive setup guide.
+
+## Prerequisites
+
+### Node.js
+
+Karen requires **Node.js 20.0.0 or higher**.
+
+<CodeGroup>
+```bash Check version
+node --version
+# Should output: v20.x.x or higher
+```
+
+```bash Install via nvm (recommended)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 20
+nvm use 20
+```
+
+```bash Install via Homebrew (macOS)
+brew install node@20
+```
+
+```bash Install via apt (Ubuntu/Debian)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+</CodeGroup>
+
+From `package.json`:
+
+```json
+"engines": {
+  "node": ">=20.0.0"
+}
+```
+
+### LLM API Key
+
+Karen supports multiple LLM providers. You need **at least one** API key:
+
+<Tabs>
+  <Tab title="OpenAI">
+    **Recommended for beginners**. Best balance of cost and performance.
+    
+    1. Sign up at [platform.openai.com](https://platform.openai.com)
+    2. Navigate to API Keys
+    3. Create new key with name "Karen"
+    4. Copy key (starts with `sk-`)
+    
+    **Models supported:**
+    - `gpt-4o` (default, most capable)
+    - `gpt-4o-mini` (faster, cheaper)
+    - `gpt-3.5-turbo` (legacy)
+    
+    **Cost:** ~$0.005 per agent cycle (30 seconds)
+  </Tab>
+  
+  <Tab title="Anthropic">
+    **Best for complex reasoning**. Excellent for sophisticated strategies.
+    
+    1. Sign up at [console.anthropic.com](https://console.anthropic.com)
+    2. Navigate to API Keys
+    3. Create new key
+    4. Copy key (starts with `sk-ant-`)
+    
+    **Models supported:**
+    - `claude-sonnet-4-20250514` (default, most capable)
+    - `claude-3-haiku` (faster, cheaper)
+    
+    **Cost:** ~$0.003 per agent cycle
+  </Tab>
+  
+  <Tab title="xAI (Grok)">
+    **Fastest responses**. Good for high-frequency trading.
+    
+    1. Sign up at [console.x.ai](https://console.x.ai)
+    2. Generate API key
+    3. Copy key (starts with `xai-`)
+    
+    **Models supported:**
+    - `grok-3-latest` (default)
+    
+    **Cost:** Varies by usage
+  </Tab>
+  
+  <Tab title="Google (Gemini)">
+    **Most cost-effective**. Great for testing.
+    
+    1. Sign up at [aistudio.google.com](https://aistudio.google.com)
+    2. Get API key
+    3. Copy key
+    
+    **Models supported:**
+    - `gemini-2.0-flash` (default)
+    
+    **Cost:** Free tier available
+  </Tab>
+</Tabs>
+
+### Git
+
+For cloning the repository:
+
+```bash
+git --version
+# If not installed: https://git-scm.com/downloads
+```
+
+## Installation Steps
+
+### 1. Clone Repository
+
+```bash
+git clone https://github.com/yourusername/karen.git
+cd karen
+```
+
+<Note>
+Replace `yourusername` with the actual GitHub username/organization.
+</Note>
+
+### 2. Install Dependencies
+
+Karen uses standard npm packages. Choose your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install
+```
+
+```bash yarn
+yarn install
+```
+
+```bash pnpm
+pnpm install
+```
+</CodeGroup>
+
+**Key dependencies** (from `package.json`):
+
+```json
+"dependencies": {
+  "@anthropic-ai/sdk": "^0.39.0",
+  "@google/genai": "^1.43.0",
+  "@solana/web3.js": "^1.98.0",
+  "@solana/spl-token": "^0.4.9",
+  "openai": "^4.77.0",
+  "commander": "^13.0.0",
+  "chalk": "^5.4.1",
+  "dotenv": "^16.4.7"
+}
+```
+
+Installation takes ~2-3 minutes depending on connection speed.
+
+### 3. Configure Environment
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
+
+```bash .env
+# ============================================
+# Karen Configuration
+# ============================================
+
+# Solana
+SOLANA_RPC_URL=https://api.devnet.solana.com
+SOLANA_NETWORK=devnet
+
+# LLM Providers (at least one required)
+OPENAI_API_KEY=sk-your-openai-key
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
+XAI_API_KEY=xai-your-grok-key
+GEMINI_API_KEY=your-gemini-key
+
+# Keystore encryption
+KEYSTORE_PASSWORD=your-secure-password-here
+
+# API Server
+API_PORT=3001
+API_SECRET=your-api-secret-for-external-agents
+
+# MCP Server
+MCP_ENABLED=true
+
+# Agent defaults
+DEFAULT_LLM_PROVIDER=openai
+DEFAULT_LLM_MODEL=gpt-4o
+AGENT_LOOP_INTERVAL_MS=30000
+MAX_TX_PER_MINUTE=5
+MAX_SOL_PER_TX=2.0
+DAILY_SPENDING_LIMIT_SOL=10.0
+
+# Telegram Integration (optional)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_USERS=
+```
+
+#### Configuration Reference
+
+<AccordionGroup>
+  <Accordion title="Solana Settings">
+    | Variable | Description | Default |
+    |----------|-------------|----------|
+    | `SOLANA_RPC_URL` | Solana RPC endpoint | `https://api.devnet.solana.com` |
+    | `SOLANA_NETWORK` | Network (`devnet`, `testnet`, `mainnet-beta`) | `devnet` |
+    
+    **Alternative RPC providers:**
+    - Helius: `https://devnet.helius-rpc.com/?api-key=YOUR_KEY`
+    - Alchemy: `https://solana-devnet.g.alchemy.com/v2/YOUR_KEY`
+    - QuickNode: `https://your-endpoint.solana-devnet.quiknode.pro/YOUR_KEY/`
+  </Accordion>
+  
+  <Accordion title="LLM Provider Keys">
+    Add **at least one** API key:
+    
+    | Variable | Format | Get Key |
+    |----------|--------|----------|
+    | `OPENAI_API_KEY` | `sk-...` | [platform.openai.com](https://platform.openai.com) |
+    | `ANTHROPIC_API_KEY` | `sk-ant-...` | [console.anthropic.com](https://console.anthropic.com) |
+    | `XAI_API_KEY` | `xai-...` | [console.x.ai](https://console.x.ai) |
+    | `GEMINI_API_KEY` | Any string | [aistudio.google.com](https://aistudio.google.com) |
+    
+    Keys are loaded in `src/agent/runtime.ts:75-89`:
+    
+    ```typescript
+    private getLlm(): LLMProvider {
+      if (this.llm) return this.llm
+
+      if (this.config.llmProvider === 'anthropic') {
+        this.llm = new AnthropicProvider()
+      } else if (this.config.llmProvider === 'grok') {
+        this.llm = new GrokProvider()
+      } else if (this.config.llmProvider === 'gemini') {
+        this.llm = new GeminiProvider()
+      } else {
+        this.llm = new OpenAIProvider()
+      }
+
+      return this.llm
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Keystore Security">
+    | Variable | Description | Recommendation |
+    |----------|-------------|----------------|
+    | `KEYSTORE_PASSWORD` | Master password for wallet encryption | Use 32+ random characters |
+    
+    **Generate secure password:**
+    
+    ```bash
+    openssl rand -base64 32
+    ```
+    
+    Keystores are encrypted with AES-256-GCM and scrypt key derivation (N=16384, r=8, p=1).
+    
+    <Warning>
+    **Never commit `.env` to version control.** The `.gitignore` already excludes it.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="API Server">
+    | Variable | Description | Default |
+    |----------|-------------|----------|
+    | `API_PORT` | REST API server port | `3001` |
+    | `API_SECRET` | Bearer token for admin endpoints | `karen-dev-secret` |
+    
+    Used by external agents to create wallets and execute transactions:
+    
+    ```typescript
+    // src/api/server.ts:55
+    this.apiSecret = process.env.API_SECRET || 'karen-dev-secret'
+    ```
+  </Accordion>
+  
+  <Accordion title="Agent Defaults">
+    | Variable | Description | Default |
+    |----------|-------------|----------|
+    | `DEFAULT_LLM_PROVIDER` | Default LLM (`openai`, `anthropic`, `grok`, `gemini`) | `openai` |
+    | `DEFAULT_LLM_MODEL` | Default model per provider | `gpt-4o` |
+    | `AGENT_LOOP_INTERVAL_MS` | Milliseconds between agent cycles | `30000` (30s) |
+    | `MAX_TX_PER_MINUTE` | Rate limit for transactions | `5` |
+    | `MAX_SOL_PER_TX` | Max SOL per transaction | `2.0` |
+    | `DAILY_SPENDING_LIMIT_SOL` | Daily spending cap | `10.0` |
+    
+    These can be overridden per-agent:
+    
+    ```bash
+    karen agent create \
+      --name "HighFreqBot" \
+      --strategy "..." \
+      --interval 10000 \
+      --max-per-tx 0.5 \
+      --daily-limit 5
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### 4. Build Project
+
+Compile TypeScript to JavaScript:
+
+<CodeGroup>
+```bash npm
+npm run build
+```
+
+```bash yarn
+yarn build
+```
+
+```bash pnpm
+pnpm build
+```
+</CodeGroup>
+
+**Build script** (from `package.json`):
+
+```json
+"scripts": {
+  "build": "tsc",
+  "dev": "tsx watch src/cli/index.ts",
+  "start": "node dist/cli/index.js"
+}
+```
+
+Output is written to `dist/` directory.
+
+### 5. Verify Installation
+
+Run the info command to check system health:
+
+```bash
+npm run cli -- info
+```
+
+Expected output:
+
+```
+╔═══════════════════════════════════════════╗
+║  ⚡ Karen — Autonomous Wallet Infrastructure  ║
+║     for Solana AI Agents                    ║  
+╚═══════════════════════════════════════════╝
+
+  System Info:
+
+    Solana:    Connected (devnet)
+    Slot:      123456789
+    Wallets:   0
+    Agents:    0
+```
+
+<Note>
+If Solana shows "Disconnected", check your `SOLANA_RPC_URL` and internet connection.
+</Note>
+
+## Project Structure
+
+After installation, your directory should look like:
+
+```
+karen/
+├── src/                      # TypeScript source code
+│   ├── core/                 # Core wallet and transaction logic
+│   ├── agent/                # Agent runtime and skills
+│   ├── protocols/            # DeFi protocol adapters
+│   ├── api/                  # REST API server
+│   ├── mcp/                  # MCP server
+│   └── cli/                  # CLI interface
+├── dist/                     # Compiled JavaScript (after build)
+├── data/                     # Runtime data (created on first run)
+│   ├── keystores/            # Encrypted wallets
+│   ├── agents.json           # Agent configurations
+│   ├── transactions.json     # Transaction logs
+│   └── memory/               # Agent memory files
+├── dashboard/                # Optional Next.js dashboard
+├── .env                      # Your configuration (not in git)
+├── .env.example              # Configuration template
+├── package.json              # Dependencies and scripts
+├── tsconfig.json             # TypeScript configuration
+└── README.md                 # Project documentation
+```
+
+## Development Mode
+
+For active development with auto-reload:
+
+```bash
+npm run dev
+```
+
+Uses `tsx watch` to recompile on file changes.
+
+## Optional: Dashboard Setup
+
+Karen includes a Next.js dashboard for visual monitoring:
+
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+Dashboard runs at `http://localhost:3000` and connects to the API server at `http://localhost:3001`.
+
+## Optional: MCP Server Setup
+
+To use Karen as an MCP server for Claude Desktop or OpenClaw:
+
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+
+```json
+{
+  "mcpServers": {
+    "karen": {
+      "command": "npx",
+      "args": ["tsx", "/absolute/path/to/karen/src/mcp/server.ts"]
+    }
+  }
+}
+```
+
+### OpenClaw
+
+Add to your OpenClaw MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "karen": {
+      "command": "npx",
+      "args": ["tsx", "/absolute/path/to/karen/src/mcp/server.ts"]
+    }
+  }
+}
+```
+
+Restart Claude/OpenClaw. You should see 17 new `karen_*` tools available.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Cannot find module">
+    Dependencies not installed. Run:
+    
+    ```bash
+    rm -rf node_modules package-lock.json
+    npm install
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: OPENAI_API_KEY not set">
+    Missing LLM API key. Check `.env` file:
+    
+    ```bash
+    cat .env | grep OPENAI_API_KEY
+    ```
+    
+    Should show:
+    ```
+    OPENAI_API_KEY=sk-...
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: connect ECONNREFUSED">
+    Solana RPC endpoint unreachable. Try alternative:
+    
+    ```bash .env
+    SOLANA_RPC_URL=https://api.devnet.solana.com
+    ```
+  </Accordion>
+  
+  <Accordion title="TypeScript errors during build">
+    Ensure TypeScript version matches:
+    
+    ```bash
+    npm list typescript
+    # Should show: typescript@5.7.0
+    ```
+    
+    If different, reinstall:
+    
+    ```bash
+    npm install typescript@5.7.0 --save-dev
+    npm run build
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: EACCES permission denied">
+    Node modules installed with wrong permissions. Fix:
+    
+    ```bash
+    sudo chown -R $(whoami) ~/.npm
+    sudo chown -R $(whoami) node_modules
+    npm install
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first agent in 5 minutes
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/integration/cli">
+    Complete command-line interface documentation
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/wallets">
+    REST API and MCP integration guide
+  </Card>
+  <Card title="Security Guide" icon="shield" href="/core-concepts/security">
+    Best practices for production deployment
+  </Card>
+</CardGroup>
+
+## System Requirements
+
+### Minimum
+
+- **OS**: macOS 10.15+, Ubuntu 20.04+, Windows 10+ (WSL2)
+- **Node.js**: 20.0.0+
+- **RAM**: 2 GB
+- **Storage**: 500 MB
+- **Network**: Stable internet connection
+
+### Recommended
+
+- **OS**: macOS 13+, Ubuntu 22.04+
+- **Node.js**: 20.11.0+ (LTS)
+- **RAM**: 4 GB+
+- **Storage**: 2 GB (for logs and memory)
+- **Network**: Low-latency connection to Solana RPC
+
+## License
+
+Karen is open source under the [MIT License](https://github.com/yourusername/karen/blob/main/LICENSE). Free for commercial and personal use.

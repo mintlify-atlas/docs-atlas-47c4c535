@@ -1,0 +1,434 @@
+---
+title: "Configuration"
+description: "Environment variables, guardrails, LLM settings, and network configuration for Karen agents"
+---
+
+Karen is configured through environment variables and per-agent settings. This guide covers all configuration options for security guardrails, LLM providers, network settings, and API access.
+
+## Environment Variables
+
+Create a `.env` file in your project root with these settings:
+
+### Solana Network
+
+Configure which Solana network your agents connect to:
+
+```bash .env
+# Solana RPC endpoint (required)
+SOLANA_RPC_URL=https://api.devnet.solana.com
+
+# Network name for transaction tracking
+SOLANA_NETWORK=devnet
+```
+
+<Info>
+**Production**: Use a dedicated RPC provider like Helius, QuickNode, or Alchemy for better performance and rate limits.
+</Info>
+
+### LLM Providers
+
+Karen supports multiple LLM providers. Configure at least one:
+
+```bash .env
+# OpenAI (GPT-4, GPT-4o, GPT-3.5-turbo)
+OPENAI_API_KEY=sk-your-openai-key
+
+# Anthropic (Claude Sonnet, Claude Haiku)
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
+
+# xAI Grok
+XAI_API_KEY=xai-your-grok-key
+
+# Google Gemini
+GEMINI_API_KEY=your-gemini-key
+```
+
+**Supported Models**:
+
+<CodeGroup>
+```typescript OpenAI
+// Default: gpt-4o
+- gpt-4o
+- gpt-4o-mini
+- gpt-3.5-turbo
+```
+
+```typescript Anthropic
+// Default: claude-sonnet-4-20250514
+- claude-sonnet-4-20250514
+- claude-3-haiku-20240307
+```
+
+```typescript xAI
+- grok-2-latest
+```
+
+```typescript Gemini
+- gemini-2.0-flash-exp
+```
+</CodeGroup>
+
+### Keystore Security
+
+Wallets are encrypted using AES-256-GCM with scrypt key derivation:
+
+```bash .env
+# Keystore encryption password (required)
+KEYSTORE_PASSWORD=your-secure-password-here
+```
+
+<Warning>
+**Critical**: Store this password securely. If lost, encrypted wallets cannot be recovered. Use a password manager or secrets vault in production.
+</Warning>
+
+### API Server
+
+Enable external agents to interact with Karen via REST API:
+
+```bash .env
+# API server port
+API_PORT=3001
+
+# API authentication secret
+API_SECRET=your-api-secret-for-external-agents
+```
+
+See [API Reference](/api-reference/wallets) for usage.
+
+### MCP Server
+
+Enable Model Context Protocol for Claude Desktop and other MCP clients:
+
+```bash .env
+# Enable MCP server
+MCP_ENABLED=true
+```
+
+See [MCP Integration](/integration/mcp-server) for setup.
+
+### Agent Defaults
+
+Set default values for newly created agents:
+
+```bash .env
+# Default LLM provider (openai | anthropic | grok | gemini)
+DEFAULT_LLM_PROVIDER=openai
+
+# Default LLM model
+DEFAULT_LLM_MODEL=gpt-4o
+
+# Agent decision loop interval (milliseconds)
+AGENT_LOOP_INTERVAL_MS=30000
+```
+
+### Guardrails
+
+Configure default security guardrails for transaction safety:
+
+```bash .env
+# Maximum SOL per transaction
+MAX_SOL_PER_TX=2.0
+
+# Maximum transactions per minute (rate limiting)
+MAX_TX_PER_MINUTE=5
+
+# Daily spending limit in SOL
+DAILY_SPENDING_LIMIT_SOL=10.0
+```
+
+<Info>
+These are defaults. Each agent can have custom guardrails configured individually.
+</Info>
+
+### Telegram Integration
+
+Optional: Enable Telegram notifications and control:
+
+```bash .env
+# Telegram bot token from @BotFather
+TELEGRAM_BOT_TOKEN=
+
+# Comma-separated list of allowed Telegram user IDs
+TELEGRAM_ALLOWED_USERS=
+```
+
+## Complete Example
+
+Here's a production-ready `.env` configuration:
+
+```bash .env
+# ============================================
+# Karen Configuration
+# ============================================
+
+# Solana
+SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+SOLANA_NETWORK=mainnet-beta
+
+# LLM Providers
+OPENAI_API_KEY=sk-proj-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Keystore
+KEYSTORE_PASSWORD=use-a-strong-password-from-vault
+
+# API Server
+API_PORT=3001
+API_SECRET=generate-with-openssl-rand-hex-32
+
+# MCP Server
+MCP_ENABLED=true
+
+# Agent Defaults
+DEFAULT_LLM_PROVIDER=anthropic
+DEFAULT_LLM_MODEL=claude-sonnet-4-20250514
+AGENT_LOOP_INTERVAL_MS=60000
+
+# Guardrails
+MAX_SOL_PER_TX=5.0
+MAX_TX_PER_MINUTE=3
+DAILY_SPENDING_LIMIT_SOL=50.0
+
+# Telegram (optional)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_USERS=
+```
+
+## Guardrail Configuration
+
+Karen uses a multi-layered security system to protect agent wallets from excessive spending or malicious activity.
+
+### Default Guardrails
+
+Defined in `src/core/types.ts:117`:
+
+```typescript
+export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
+  maxSolPerTransaction: 2.0,
+  maxTransactionsPerMinute: 5,
+  dailySpendingLimitSol: 10.0,
+  allowedPrograms: [
+    '11111111111111111111111111111111', // System Program
+    'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // Token Program
+    'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL', // Associated Token Program
+    'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4', // Jupiter v6
+    'Stake11111111111111111111111111111111111111', // Stake Program
+    'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s', // Token Metadata Program
+  ],
+  blockedAddresses: [],
+}
+```
+
+### Guardrail Types
+
+Each transaction is validated against five guardrail checks (`src/core/transaction/guardrails.ts:29`):
+
+<Steps>
+  <Step title="Per-Transaction Limit">
+    Prevents individual transactions from exceeding `maxSolPerTransaction`:
+
+    ```typescript
+    if (amountSol > this.config.maxSolPerTransaction) {
+      return {
+        allowed: false,
+        reason: `Amount ${amountSol} SOL exceeds per-transaction limit of ${this.config.maxSolPerTransaction} SOL`,
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Rate Limiting">
+    Limits transactions per minute to prevent rapid draining:
+
+    ```typescript
+    const recentTxCount = window.timestamps.filter(
+      (t) => now - t < 60_000,
+    ).length
+
+    if (recentTxCount >= this.config.maxTransactionsPerMinute) {
+      return {
+        allowed: false,
+        reason: `Rate limit exceeded: ${recentTxCount}/${this.config.maxTransactionsPerMinute} transactions per minute`,
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Daily Spending Limit">
+    Tracks total SOL spent per day and blocks transactions that would exceed the limit:
+
+    ```typescript
+    if (window.dailySpend + amountSol > this.config.dailySpendingLimitSol) {
+      return {
+        allowed: false,
+        reason: `Daily spending limit exceeded: ${window.dailySpend.toFixed(4)} + ${amountSol} > ${this.config.dailySpendingLimitSol} SOL`,
+      }
+    }
+    ```
+
+    Daily spending resets every 24 hours.
+  </Step>
+
+  <Step title="Program Allowlist">
+    Only allows transactions to interact with approved Solana programs:
+
+    ```typescript
+    const disallowed = programIds.filter(
+      (p) => !this.config.allowedPrograms.includes(p),
+    )
+    if (disallowed.length > 0) {
+      return {
+        allowed: false,
+        reason: `Programs not in allowlist: ${disallowed.join(', ')}`,
+      }
+    }
+    ```
+
+    This prevents agents from interacting with unknown or malicious programs.
+  </Step>
+
+  <Step title="Blocked Addresses">
+    Prevents sending funds to known malicious addresses:
+
+    ```typescript
+    if (
+      destinationAddress &&
+      this.config.blockedAddresses.includes(destinationAddress)
+    ) {
+      return {
+        allowed: false,
+        reason: `Destination address is blocked: ${destinationAddress}`,
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+### Custom Per-Agent Guardrails
+
+Each agent can have custom guardrails that override the defaults. Create an agent config file:
+
+```json data/agents/my-agent-config.json
+{
+  "id": "agent-123",
+  "name": "High-Frequency-Trader",
+  "walletId": "wallet-456",
+  "llmProvider": "openai",
+  "llmModel": "gpt-4o",
+  "strategy": "Execute high-frequency arbitrage trades",
+  "guardrails": {
+    "maxSolPerTransaction": 0.5,
+    "maxTransactionsPerMinute": 10,
+    "dailySpendingLimitSol": 5.0,
+    "allowedPrograms": [
+      "11111111111111111111111111111111",
+      "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+    ],
+    "blockedAddresses": []
+  },
+  "loopIntervalMs": 5000,
+  "status": "stopped",
+  "createdAt": "2026-03-03T10:00:00.000Z"
+}
+```
+
+## LLM Configuration
+
+The LLM provider interface is defined in `src/agent/llm/provider.ts:28`:
+
+### OpenAI Configuration
+
+```typescript
+import { OpenAIProvider } from './agent/llm/openai'
+
+const provider = new OpenAIProvider(process.env.OPENAI_API_KEY)
+
+const response = await provider.chat(
+  messages,
+  skillDefinitions,
+  'gpt-4o' // or 'gpt-4o-mini', 'gpt-3.5-turbo'
+)
+```
+
+### Anthropic Configuration
+
+```typescript
+import { AnthropicProvider } from './agent/llm/anthropic'
+
+const provider = new AnthropicProvider(process.env.ANTHROPIC_API_KEY)
+
+const response = await provider.chat(
+  messages,
+  skillDefinitions,
+  'claude-sonnet-4-20250514'
+)
+```
+
+### Token Usage Tracking
+
+All LLM responses include token usage data:
+
+```typescript
+interface LLMResponse {
+  content: string
+  toolCalls: SkillInvocation[]
+  tokensUsed: {
+    input: number
+    output: number
+  }
+}
+```
+
+This data is logged in agent decision records for cost tracking.
+
+## RPC Endpoint Configuration
+
+For production deployments, use a dedicated RPC provider:
+
+### Helius
+
+```bash
+SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY
+SOLANA_NETWORK=mainnet-beta
+```
+
+### QuickNode
+
+```bash
+SOLANA_RPC_URL=https://YOUR_ENDPOINT.solana-mainnet.quiknode.pro/YOUR_TOKEN/
+SOLANA_NETWORK=mainnet-beta
+```
+
+### Alchemy
+
+```bash
+SOLANA_RPC_URL=https://solana-mainnet.g.alchemy.com/v2/YOUR_API_KEY
+SOLANA_NETWORK=mainnet-beta
+```
+
+### Local Validator (Testing)
+
+```bash
+SOLANA_RPC_URL=http://127.0.0.1:8899
+SOLANA_NETWORK=localnet
+```
+
+<Warning>
+Public RPC endpoints have strict rate limits. For production agents, always use a paid RPC service with higher limits.
+</Warning>
+
+## Security Best Practices
+
+1. **Environment Variables**: Never commit `.env` files to version control
+2. **Keystore Password**: Use a secrets vault (AWS Secrets Manager, HashiCorp Vault)
+3. **API Secrets**: Generate with `openssl rand -hex 32`
+4. **Guardrails**: Start conservative and gradually increase limits after testing
+5. **Program Allowlist**: Only add programs you've audited and trust
+6. **Network Separation**: Use devnet for testing, mainnet for production
+7. **RPC Credentials**: Store RPC API keys securely, rotate regularly
+
+## Next Steps
+
+- Create your first [Custom Skill](/development/custom-skills)
+- Monitor agents with the [Dashboard](/development/dashboard)
+- Integrate external agents via [API](/api-reference/wallets)

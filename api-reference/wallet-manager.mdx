@@ -1,0 +1,412 @@
+---
+title: "WalletManager SDK"
+description: "Complete API reference for the WalletManager class for creating and managing Solana wallets"
+---
+
+# WalletManager
+
+The `WalletManager` class handles wallet creation, HD derivation, balance checking, and keystore management. All private keys are encrypted at rest using AES-256-GCM.
+
+## Constructor
+
+```typescript
+class WalletManager {
+  constructor(password: string, keystoreDir?: string)
+}
+```
+
+<ParamField path="password" type="string" required>
+  Password for encrypting/decrypting wallet keys
+</ParamField>
+
+<ParamField path="keystoreDir" type="string">
+  Custom directory for storing encrypted keystores (optional)
+</ParamField>
+
+**Example:**
+```typescript
+import { WalletManager } from '@karen/core'
+
+const walletManager = new WalletManager('my-secure-password')
+```
+
+---
+
+## Wallet Creation
+
+### createWallet()
+
+Create a new random wallet with a generated keypair.
+
+```typescript
+async createWallet(
+  name: string,
+  tags?: string[]
+): Promise<WalletInfo>
+```
+
+<ParamField path="name" type="string" required>
+  Human-readable name for the wallet
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Optional tags for categorizing wallets (default: [])
+</ParamField>
+
+<ResponseField name="id" type="string">
+  Unique wallet identifier (UUID)
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Wallet name
+</ResponseField>
+
+<ResponseField name="publicKey" type="string">
+  Solana public key (base58 encoded)
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp
+</ResponseField>
+
+<ResponseField name="tags" type="string[]">
+  Wallet tags
+</ResponseField>
+
+**Example:**
+```typescript
+const wallet = await walletManager.createWallet('my-agent-wallet', ['agent', 'trading'])
+console.log(wallet.id)        // "abc-123-def-456"
+console.log(wallet.publicKey) // "7xK...abc"
+```
+
+---
+
+### createDerivedWallet()
+
+Create a wallet derived from a master mnemonic using HD derivation (BIP44).
+
+```typescript
+async createDerivedWallet(
+  name: string,
+  mnemonic: string,
+  derivationIndex: number,
+  tags?: string[]
+): Promise<WalletInfo>
+```
+
+<ParamField path="name" type="string" required>
+  Wallet name
+</ParamField>
+
+<ParamField path="mnemonic" type="string" required>
+  BIP39 mnemonic (12 or 24 words)
+</ParamField>
+
+<ParamField path="derivationIndex" type="number" required>
+  Derivation path index (uses m/44'/501'/N'/0')
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Optional tags
+</ParamField>
+
+**Example:**
+```typescript
+const mnemonic = WalletManager.generateMnemonic()
+const wallet = await walletManager.createDerivedWallet(
+  'agent-1',
+  mnemonic,
+  0,
+  ['agent']
+)
+```
+
+---
+
+### importWallet()
+
+Import an existing wallet from a secret key.
+
+```typescript
+async importWallet(
+  name: string,
+  secretKey: Uint8Array,
+  tags?: string[]
+): Promise<WalletInfo>
+```
+
+<ParamField path="name" type="string" required>
+  Wallet name
+</ParamField>
+
+<ParamField path="secretKey" type="Uint8Array" required>
+  64-byte Solana secret key
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Optional tags
+</ParamField>
+
+**Example:**
+```typescript
+import bs58 from 'bs58'
+
+const secretKey = bs58.decode('your-secret-key-here')
+const wallet = await walletManager.importWallet('imported-wallet', secretKey)
+```
+
+---
+
+### generateMnemonic()
+
+Generate a new 24-word BIP39 mnemonic for HD derivation.
+
+```typescript
+static generateMnemonic(): string
+```
+
+**Example:**
+```typescript
+const mnemonic = WalletManager.generateMnemonic()
+console.log(mnemonic) // "abandon ability able about above absent absorb..."
+```
+
+---
+
+## Wallet Access
+
+### getKeypair()
+
+Get the decrypted keypair for a wallet. **Keep private keys in memory only.**
+
+```typescript
+async getKeypair(walletId: string): Promise<Keypair>
+```
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+**Example:**
+```typescript
+const keypair = await walletManager.getKeypair('abc-123')
+const signature = await keypair.signTransaction(transaction)
+```
+
+---
+
+### listWallets()
+
+List all wallets (metadata only, no private keys).
+
+```typescript
+listWallets(): WalletInfo[]
+```
+
+**Example:**
+```typescript
+const wallets = walletManager.listWallets()
+wallets.forEach(w => console.log(`${w.name}: ${w.publicKey}`))
+```
+
+---
+
+### getWallet()
+
+Get a single wallet's info.
+
+```typescript
+getWallet(walletId: string): WalletInfo | null
+```
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+**Example:**
+```typescript
+const wallet = walletManager.getWallet('abc-123')
+if (wallet) {
+  console.log(wallet.publicKey)
+}
+```
+
+---
+
+### findWalletByName()
+
+Find a wallet by name.
+
+```typescript
+findWalletByName(name: string): WalletInfo | null
+```
+
+<ParamField path="name" type="string" required>
+  Wallet name
+</ParamField>
+
+**Example:**
+```typescript
+const wallet = walletManager.findWalletByName('my-trading-wallet')
+```
+
+---
+
+### deleteWallet()
+
+Permanently delete a wallet from the keystore.
+
+```typescript
+deleteWallet(walletId: string): boolean
+```
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID to delete
+</ParamField>
+
+**Returns:** `true` if deleted, `false` if wallet not found
+
+---
+
+## Balance Tracking
+
+### getSolBalance()
+
+Get SOL balance for a wallet.
+
+```typescript
+async getSolBalance(walletId: string): Promise<number>
+```
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+**Returns:** SOL balance in native units (e.g., 1.5 SOL)
+
+**Example:**
+```typescript
+const balance = await walletManager.getSolBalance('abc-123')
+console.log(`Balance: ${balance} SOL`)
+```
+
+---
+
+### getBalances()
+
+Get all balances (SOL + SPL tokens) for a wallet.
+
+```typescript
+async getBalances(walletId: string): Promise<WalletBalance>
+```
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ResponseField name="sol" type="number">
+  SOL balance in native units
+</ResponseField>
+
+<ResponseField name="tokens" type="TokenBalance[]">
+  Array of SPL token holdings
+</ResponseField>
+
+```typescript
+interface WalletBalance {
+  sol: number
+  tokens: TokenBalance[]
+}
+
+interface TokenBalance {
+  mint: string
+  symbol?: string
+  balance: number        // Raw balance
+  decimals: number
+  uiBalance: number     // Human-readable balance
+}
+```
+
+**Example:**
+```typescript
+const { sol, tokens } = await walletManager.getBalances('abc-123')
+console.log(`SOL: ${sol}`)
+tokens.forEach(t => {
+  console.log(`${t.mint}: ${t.uiBalance}`)
+})
+```
+
+---
+
+### requestAirdrop()
+
+Request a devnet SOL airdrop. **Devnet only.**
+
+```typescript
+async requestAirdrop(
+  walletId: string,
+  amountSol?: number
+): Promise<string>
+```
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID to fund
+</ParamField>
+
+<ParamField path="amountSol" type="number">
+  Amount of SOL to request (default: 1, max: 2)
+</ParamField>
+
+**Returns:** Transaction signature
+
+**Example:**
+```typescript
+const signature = await walletManager.requestAirdrop('abc-123', 2)
+console.log(`Airdrop confirmed: ${signature}`)
+```
+
+---
+
+## TypeScript Types
+
+```typescript
+interface WalletInfo {
+  id: string
+  name: string
+  publicKey: string
+  createdAt: string
+  derivationIndex?: number
+  tags: string[]
+}
+
+interface WalletBalance {
+  sol: number
+  tokens: TokenBalance[]
+}
+
+interface TokenBalance {
+  mint: string
+  symbol?: string
+  balance: number
+  decimals: number
+  uiBalance: number
+}
+```
+
+---
+
+## Security Notes
+
+- All private keys are encrypted at rest using AES-256-GCM with Scrypt key derivation
+- Keystores are stored in `~/.karen/keystores/` by default
+- Never expose the encryption password or decrypted keypairs
+- Use HD derivation for deterministic wallet generation from a single mnemonic
+
+---
+
+## See Also
+
+- [TransactionEngine](/api-reference/transaction-engine) - Sign and send transactions
+- [AgentRuntime](/api-reference/agent-runtime) - Autonomous agent loops
+- [Security Architecture](/core-concepts/security) - Keystore encryption details

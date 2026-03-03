@@ -1,0 +1,541 @@
+---
+title: REST API
+description: Integrate Karen wallet infrastructure via HTTP endpoints for external AI agents and applications
+---
+
+## Overview
+
+Karen exposes a **REST API** that allows external applications and AI agents to manage Solana wallets, execute transactions, and interact with DeFi protocols over HTTP.
+
+The API is built with Express.js and includes:
+- **API key management** for secure access
+- **Wallet operations** (create, balance, transfer, swap)
+- **DeFi integrations** (token launch, staking, wrapped SOL)
+- **Agent management** (create, start/stop, chat with AI agents)
+- **Transaction history** and audit logs
+
+<Info>
+  Base URL: `http://localhost:3001` (configurable via `API_PORT` env var)
+</Info>
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Start the API server">
+    ```bash
+    karen server start --port 3001
+    ```
+
+    Or using npm:
+    ```bash
+    npm run server
+    ```
+
+    You should see:
+    ```
+    🚀 Karen API server running on http://localhost:3001
+       Health: http://localhost:3001/api/v1/health
+    ```
+  </Step>
+
+  <Step title="Set your API secret">
+    The admin API secret is used to create API keys and manage agents.
+
+    ```bash .env
+    API_SECRET=your-secure-secret-here
+    ```
+
+    **Default:** `karen-dev-secret` (change this in production!)
+  </Step>
+
+  <Step title="Test the health endpoint">
+    ```bash
+    curl http://localhost:3001/api/v1/health
+    ```
+
+    Response:
+    ```json
+    {
+      "status": "ok",
+      "version": "0.1.0",
+      "solana": {
+        "healthy": true,
+        "network": "devnet",
+        "slot": 123456789
+      },
+      "agents": {
+        "total": 2,
+        "running": 1
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Authentication
+
+Karen uses **two types of authentication**:
+
+### Admin Authentication
+
+Used for privileged operations (creating API keys, managing agents).
+
+```bash
+Authorization: Bearer YOUR_API_SECRET
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:3001/api/v1/keys \
+  -H "Authorization: Bearer karen-dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-app", "spendingLimitSol": 5}'
+```
+
+### API Key Authentication
+
+Used for wallet and transaction operations.
+
+```bash
+Authorization: Bearer sk-abc123...
+```
+
+**Example:**
+```bash
+curl http://localhost:3001/api/v1/wallets \
+  -H "Authorization: Bearer sk-abc123..."
+```
+
+<Warning>
+  API keys are stored in memory. Restarting the server will invalidate all keys.
+</Warning>
+
+---
+
+## API Key Management
+
+### Create API Key
+
+Generate a new API key with custom permissions and spending limits.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3001/api/v1/keys \
+  -H "Authorization: Bearer karen-dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "trading-bot",
+    "permissions": ["read", "write"],
+    "rateLimit": 10,
+    "spendingLimitSol": 5
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3001/api/v1/keys', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer karen-dev-secret',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'trading-bot',
+    spendingLimitSol: 5
+  })
+});
+
+const { apiKey } = await response.json();
+console.log('API Key:', apiKey);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:3001/api/v1/keys',
+    headers={'Authorization': 'Bearer karen-dev-secret'},
+    json={'name': 'trading-bot', 'spendingLimitSol': 5}
+)
+
+api_key = response.json()['apiKey']
+print(f'API Key: {api_key}')
+```
+</CodeGroup>
+
+**Request Body:**
+<ParamField path="name" type="string" required>
+  Human-readable name for the API key
+</ParamField>
+<ParamField path="permissions" type="array" default='["read", "write"]'>
+  Array of permissions (currently not enforced)
+</ParamField>
+<ParamField path="rateLimit" type="number" default="10">
+  Max requests per minute
+</ParamField>
+<ParamField path="spendingLimitSol" type="number" default="5">
+  Max SOL spending per day
+</ParamField>
+
+**Response:**
+```json
+{
+  "apiKey": "sk-550e8400e29b41d4a716446655440000",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "trading-bot"
+}
+```
+
+### List API Keys
+
+```bash
+curl http://localhost:3001/api/v1/keys \
+  -H "Authorization: Bearer karen-dev-secret"
+```
+
+**Response:**
+```json
+{
+  "keys": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "trading-bot",
+      "walletId": "660f9511-f3ac-52e5-b827-557766551111",
+      "permissions": ["read", "write"],
+      "createdAt": "2024-01-15T10:30:00Z",
+      "lastUsedAt": "2024-01-15T12:45:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Wallet Operations
+
+### Create Wallet
+
+```bash
+curl -X POST http://localhost:3001/api/v1/wallets \
+  -H "Authorization: Bearer sk-abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-wallet"}'
+```
+
+**Response:**
+```json
+{
+  "walletId": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "my-wallet",
+  "address": "7xKKzD8qHa...",
+  "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+### List Wallets
+
+```bash
+curl http://localhost:3001/api/v1/wallets \
+  -H "Authorization: Bearer sk-abc123..."
+```
+
+### Get Balance
+
+```bash
+curl http://localhost:3001/api/v1/wallets/550e8400-e29b-41d4-a716-446655440000/balance \
+  -H "Authorization: Bearer sk-abc123..."
+```
+
+**Response:**
+```json
+{
+  "sol": 1.5,
+  "tokens": [
+    {
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "symbol": "USDC",
+      "uiBalance": "100.50",
+      "rawBalance": "100500000"
+    }
+  ]
+}
+```
+
+---
+
+## Transaction Operations
+
+### Transfer SOL
+
+```bash
+curl -X POST http://localhost:3001/api/v1/wallets/WALLET_ID/transfer \
+  -H "Authorization: Bearer sk-abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "7xKKzD8qHa...",
+    "amount": 0.5
+  }'
+```
+
+**Response:**
+```json
+{
+  "id": "tx-550e8400-e29b-41d4-a716-446655440000",
+  "type": "transfer_sol",
+  "status": "confirmed",
+  "signature": "5Kn8fGzXv...",
+  "walletId": "550e8400-e29b-41d4-a716-446655440000",
+  "metadata": {
+    "to": "7xKKzD8qHa...",
+    "amount": 0.5
+  },
+  "guardrailsApplied": ["spending_limit_check"],
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+### Swap Tokens
+
+```bash
+curl -X POST http://localhost:3001/api/v1/wallets/WALLET_ID/swap \
+  -H "Authorization: Bearer sk-abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputToken": "SOL",
+    "outputToken": "USDC",
+    "amount": 0.5,
+    "slippageBps": 50
+  }'
+```
+
+**Response:**
+```json
+{
+  "signature": "5Kn8fGzXv...",
+  "inputAmount": 0.5,
+  "outputAmount": 19.23,
+  "priceImpact": 0.12
+}
+```
+
+### Request Airdrop (Devnet)
+
+```bash
+curl -X POST http://localhost:3001/api/v1/wallets/WALLET_ID/airdrop \
+  -H "Authorization: Bearer sk-abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 2}'
+```
+
+### Transaction History
+
+```bash
+curl "http://localhost:3001/api/v1/wallets/WALLET_ID/transactions?limit=20" \
+  -H "Authorization: Bearer sk-abc123..."
+```
+
+---
+
+## DeFi Operations
+
+### Launch Token
+
+```bash
+curl -X POST http://localhost:3001/api/v1/wallets/WALLET_ID/launch-token \
+  -H "Authorization: Bearer sk-abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Agent Coin",
+    "symbol": "AGT",
+    "decimals": 9,
+    "initialSupply": 1000000
+  }'
+```
+
+**Response:**
+```json
+{
+  "name": "Agent Coin",
+  "symbol": "AGT",
+  "mint": "7xKKzD8qHa...",
+  "decimals": 9,
+  "supply": 1000000,
+  "signature": "5Kn8fGzXv..."
+}
+```
+
+### Stake SOL
+
+```bash
+curl -X POST http://localhost:3001/api/v1/wallets/WALLET_ID/stake \
+  -H "Authorization: Bearer sk-abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 1.0,
+    "validator": "BeachiopjxQxL7CaHNSZsynRdj6vY5vCeaTXGKqfCZTP"
+  }'
+```
+
+### List Stake Accounts
+
+```bash
+curl http://localhost:3001/api/v1/wallets/WALLET_ID/stakes \
+  -H "Authorization: Bearer sk-abc123..."
+```
+
+### Wrap/Unwrap SOL
+
+<CodeGroup>
+```bash Wrap SOL
+curl -X POST http://localhost:3001/api/v1/wallets/WALLET_ID/wrap-sol \
+  -H "Authorization: Bearer sk-abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 1.0}'
+```
+
+```bash Unwrap SOL
+curl -X POST http://localhost:3001/api/v1/wallets/WALLET_ID/unwrap-sol \
+  -H "Authorization: Bearer sk-abc123..."
+```
+</CodeGroup>
+
+---
+
+## Agent Management
+
+### Create Agent
+
+```bash
+curl -X POST http://localhost:3001/api/v1/agents \
+  -H "Authorization: Bearer karen-dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "trader-bot",
+    "strategy": "Buy low, sell high on SOL/USDC",
+    "llmProvider": "openai",
+    "loopIntervalMs": 30000,
+    "maxSolPerTransaction": 2
+  }'
+```
+
+### List Agents
+
+```bash
+curl http://localhost:3001/api/v1/agents \
+  -H "Authorization: Bearer sk-abc123..."
+```
+
+### Start/Stop Agent
+
+<CodeGroup>
+```bash Start
+curl -X POST http://localhost:3001/api/v1/agents/AGENT_ID/start \
+  -H "Authorization: Bearer karen-dev-secret"
+```
+
+```bash Stop
+curl -X POST http://localhost:3001/api/v1/agents/AGENT_ID/stop \
+  -H "Authorization: Bearer karen-dev-secret"
+```
+</CodeGroup>
+
+### Chat with Agent
+
+```bash
+curl -X POST http://localhost:3001/api/v1/agents/AGENT_ID/chat \
+  -H "Authorization: Bearer sk-abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is your current balance?"}'
+```
+
+**Response:**
+```json
+{
+  "response": "I currently have 1.5 SOL and 100.50 USDC in my wallet."
+}
+```
+
+---
+
+## Global Transaction Feed
+
+Get all transactions across all wallets:
+
+```bash
+curl "http://localhost:3001/api/v1/transactions?limit=50" \
+  -H "Authorization: Bearer sk-abc123..."
+```
+
+---
+
+## Error Handling
+
+The API uses standard HTTP status codes:
+
+| Code | Meaning |
+|------|----------|
+| `200` | Success |
+| `400` | Bad request (missing/invalid parameters) |
+| `401` | Unauthorized (missing/invalid API key) |
+| `404` | Resource not found (wallet/agent doesn't exist) |
+| `500` | Server error (transaction failed, guardrails blocked) |
+
+**Error response format:**
+```json
+{
+  "error": "Wallet not found"
+}
+```
+
+---
+
+## Rate Limiting & Guardrails
+
+All API requests are subject to:
+
+<CardGroup cols={2}>
+  <Card title="API Key Rate Limit" icon="gauge">
+    Default: 10 requests per minute (configurable per key)
+  </Card>
+  <Card title="Transaction Guardrails" icon="shield">
+    - Max 2 SOL per transaction
+    - Max 5 tx per minute
+    - Daily spending limit (configurable per key)
+  </Card>
+</CardGroup>
+
+<Info>
+  Blocked transactions return status `500` with error message explaining the guardrail violation.
+</Info>
+
+---
+
+## Full Endpoint Reference
+
+For detailed parameter schemas and response formats, see:
+
+<Card title="API Reference" icon="book" href="/api-reference/wallets">
+  Complete endpoint documentation with request/response schemas
+</Card>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="MCP Server" icon="plug" href="/integration/mcp-server">
+    Integrate with Claude Desktop or OpenClaw
+  </Card>
+  <Card title="TypeScript SDK" icon="code" href="/integration/sdk">
+    Use Karen as a library in Node.js
+  </Card>
+  <Card title="Guardrails" icon="shield" href="/core-concepts/security">
+    Configure security policies
+  </Card>
+  <Card title="CLI" icon="terminal" href="/integration/cli">
+    Command-line interface reference
+  </Card>
+</CardGroup>

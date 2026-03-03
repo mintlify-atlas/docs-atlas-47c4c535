@@ -1,0 +1,385 @@
+---
+title: "TransactionEngine SDK"
+description: "Complete API reference for the TransactionEngine class for building and executing Solana transactions"
+---
+
+# TransactionEngine
+
+The `TransactionEngine` class builds, validates, signs, and sends Solana transactions with automatic guardrail enforcement and audit logging.
+
+## Constructor
+
+```typescript
+class TransactionEngine {
+  constructor(
+    walletManager: WalletManager,
+    guardrails: Guardrails,
+    logger: AuditLogger
+  )
+}
+```
+
+<ParamField path="walletManager" type="WalletManager" required>
+  WalletManager instance for accessing keypairs
+</ParamField>
+
+<ParamField path="guardrails" type="Guardrails" required>
+  Guardrails instance for transaction validation
+</ParamField>
+
+<ParamField path="logger" type="AuditLogger" required>
+  AuditLogger for recording all transactions
+</ParamField>
+
+**Example:**
+```typescript
+import { WalletManager, TransactionEngine, Guardrails, AuditLogger } from '@karen/core'
+
+const walletManager = new WalletManager('password')
+const guardrails = new Guardrails()
+const logger = new AuditLogger()
+const txEngine = new TransactionEngine(walletManager, guardrails, logger)
+```
+
+---
+
+## SOL Transfers
+
+### transferSol()
+
+Send SOL from one wallet to another address.
+
+```typescript
+async transferSol(
+  walletId: string,
+  toAddress: string,
+  amountSol: number,
+  agentId?: string
+): Promise<TransactionRecord>
+```
+
+<ParamField path="walletId" type="string" required>
+  Source wallet ID
+</ParamField>
+
+<ParamField path="toAddress" type="string" required>
+  Recipient Solana address (base58)
+</ParamField>
+
+<ParamField path="amountSol" type="number" required>
+  Amount of SOL to send
+</ParamField>
+
+<ParamField path="agentId" type="string">
+  Agent ID for audit logging (optional)
+</ParamField>
+
+<ResponseField name="id" type="string">
+  Transaction record ID (UUID)
+</ResponseField>
+
+<ResponseField name="status" type="TransactionStatus">
+  Transaction status: "pending", "confirmed", "failed", or "blocked"
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Solana transaction signature (if confirmed)
+</ResponseField>
+
+<ResponseField name="guardrailsApplied" type="string[]">
+  List of guardrails that were checked
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if transaction failed or was blocked
+</ResponseField>
+
+**Example:**
+```typescript
+const record = await txEngine.transferSol(
+  'wallet-abc',
+  '7xK...recipient',
+  0.5,
+  'agent-123'
+)
+
+if (record.status === 'confirmed') {
+  console.log(`Transfer confirmed: ${record.signature}`)
+} else if (record.status === 'blocked') {
+  console.log(`Transfer blocked: ${record.error}`)
+}
+```
+
+---
+
+## SPL Token Transfers
+
+### transferToken()
+
+Send SPL tokens from one wallet to another address.
+
+```typescript
+async transferToken(
+  walletId: string,
+  toAddress: string,
+  mintAddress: string,
+  amount: number,
+  decimals: number,
+  agentId?: string
+): Promise<TransactionRecord>
+```
+
+<ParamField path="walletId" type="string" required>
+  Source wallet ID
+</ParamField>
+
+<ParamField path="toAddress" type="string" required>
+  Recipient Solana address
+</ParamField>
+
+<ParamField path="mintAddress" type="string" required>
+  SPL token mint address
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount of tokens to send (in UI units)
+</ParamField>
+
+<ParamField path="decimals" type="number" required>
+  Token decimals (e.g., 6 for USDC, 9 for most SPL tokens)
+</ParamField>
+
+<ParamField path="agentId" type="string">
+  Agent ID for audit logging
+</ParamField>
+
+**Example:**
+```typescript
+const record = await txEngine.transferToken(
+  'wallet-abc',
+  '7xK...recipient',
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC mint
+  100,    // 100 USDC
+  6,      // USDC has 6 decimals
+  'agent-123'
+)
+```
+
+---
+
+## Generic Transaction Execution
+
+### signAndSend()
+
+Sign and send a pre-built transaction with guardrail validation. Used by protocol adapters (Jupiter, Staking, etc.).
+
+```typescript
+async signAndSend(
+  walletId: string,
+  transaction: Transaction,
+  amountSol: number,
+  type: TransactionType,
+  details: TransactionDetails,
+  agentId?: string,
+  programIds?: string[]
+): Promise<TransactionRecord>
+```
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID to sign with
+</ParamField>
+
+<ParamField path="transaction" type="Transaction" required>
+  Pre-built Solana transaction
+</ParamField>
+
+<ParamField path="amountSol" type="number" required>
+  SOL amount for guardrail checking
+</ParamField>
+
+<ParamField path="type" type="TransactionType" required>
+  Transaction type for logging
+</ParamField>
+
+<ParamField path="details" type="TransactionDetails" required>
+  Transaction details for audit log
+</ParamField>
+
+<ParamField path="agentId" type="string">
+  Agent ID
+</ParamField>
+
+<ParamField path="programIds" type="string[]">
+  Program IDs for allowlist validation
+</ParamField>
+
+**Example:**
+```typescript
+import { Transaction, SystemProgram } from '@solana/web3.js'
+
+const tx = new Transaction().add(
+  // ... your instructions
+)
+
+const record = await txEngine.signAndSend(
+  'wallet-abc',
+  tx,
+  0.1,      // 0.1 SOL
+  'swap',
+  { inputToken: 'SOL', outputToken: 'USDC', amount: 0.1 },
+  'agent-123',
+  ['JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'] // Jupiter program
+)
+```
+
+---
+
+## Airdrop (Devnet)
+
+### airdrop()
+
+Request a devnet airdrop. **Devnet only.**
+
+```typescript
+async airdrop(
+  walletId: string,
+  amountSol?: number,
+  agentId?: string
+): Promise<TransactionRecord>
+```
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID to fund
+</ParamField>
+
+<ParamField path="amountSol" type="number">
+  Amount of SOL to request (default: 1, max: 2)
+</ParamField>
+
+<ParamField path="agentId" type="string">
+  Agent ID for logging
+</ParamField>
+
+**Example:**
+```typescript
+const record = await txEngine.airdrop('wallet-abc', 2)
+if (record.status === 'confirmed') {
+  console.log('Airdrop received!')
+}
+```
+
+---
+
+## Transaction History
+
+### getTransactionHistory()
+
+Get transaction history for a wallet or all wallets.
+
+```typescript
+getTransactionHistory(
+  walletId?: string,
+  limit?: number
+): TransactionRecord[]
+```
+
+<ParamField path="walletId" type="string">
+  Wallet ID (optional — omit for all wallets)
+</ParamField>
+
+<ParamField path="limit" type="number">
+  Maximum number of transactions to return
+</ParamField>
+
+**Example:**
+```typescript
+const recentTxs = txEngine.getTransactionHistory('wallet-abc', 10)
+recentTxs.forEach(tx => {
+  console.log(`${tx.type}: ${tx.status} - ${tx.signature}`)
+})
+```
+
+---
+
+## Guardrail Enforcement
+
+Every transaction goes through automatic guardrail validation:
+
+1. **Per-transaction limit**: Max SOL per transaction (default: 2 SOL)
+2. **Rate limiting**: Max transactions per minute (default: 5)
+3. **Daily spending limit**: Max total SOL per day (default: 10 SOL)
+4. **Program allowlist**: Only whitelisted programs can be invoked
+5. **Blocked addresses**: Prevent transfers to blocked addresses
+
+If a transaction fails guardrail checks, it is marked as `"blocked"` and the reason is logged.
+
+**Example blocked transaction:**
+```typescript
+const record = await txEngine.transferSol('wallet-abc', '7xK...', 5.0)
+
+if (record.status === 'blocked') {
+  console.log(record.error) // "Amount 5 SOL exceeds per-transaction limit of 2 SOL"
+  console.log(record.guardrailsApplied) // ["max_per_tx", "rate_limit", "daily_limit"]
+}
+```
+
+---
+
+## TypeScript Types
+
+```typescript
+interface TransactionRecord {
+  id: string
+  walletId: string
+  agentId?: string
+  type: TransactionType
+  status: TransactionStatus
+  signature?: string
+  details: TransactionDetails
+  guardrailsApplied: string[]
+  timestamp: string
+  error?: string
+}
+
+type TransactionType =
+  | 'transfer'
+  | 'swap'
+  | 'airdrop'
+  | 'token_transfer'
+  | 'token_launch'
+  | 'mint_supply'
+  | 'revoke_authority'
+  | 'stake'
+  | 'unstake'
+  | 'withdraw_stake'
+  | 'burn'
+  | 'close_account'
+  | 'wrap_sol'
+  | 'unwrap_sol'
+  | 'freeze'
+  | 'thaw'
+  | 'other'
+
+type TransactionStatus = 'pending' | 'confirmed' | 'failed' | 'blocked'
+
+interface TransactionDetails {
+  from?: string
+  to?: string
+  amount?: number
+  token?: string
+  inputToken?: string
+  outputToken?: string
+  inputAmount?: number
+  outputAmount?: number
+  slippageBps?: number
+  [key: string]: unknown
+}
+```
+
+---
+
+## See Also
+
+- [WalletManager](/api-reference/wallet-manager) - Wallet creation and management
+- [Guardrails](/core-concepts/security) - Transaction validation rules
+- [AgentRuntime](/api-reference/agent-runtime) - Autonomous transaction execution

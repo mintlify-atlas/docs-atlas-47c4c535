@@ -1,0 +1,445 @@
+---
+title: "AgentRuntime SDK"
+description: "Complete API reference for the AgentRuntime class for creating autonomous AI agents"
+---
+
+# AgentRuntime
+
+The `AgentRuntime` class implements the core agent loop: **Observe → Think → Act → Remember**. It manages autonomous AI agents that can make decisions and execute Solana transactions based on their strategy.
+
+## Constructor
+
+```typescript
+class AgentRuntime {
+  constructor(
+    config: AgentConfig,
+    walletManager: WalletManager,
+    transactionEngine: TransactionEngine,
+    logger: AuditLogger,
+    skills?: SkillRegistry,
+    memory?: MemoryStore
+  )
+}
+```
+
+<ParamField path="config" type="AgentConfig" required>
+  Agent configuration including name, strategy, and guardrails
+</ParamField>
+
+<ParamField path="walletManager" type="WalletManager" required>
+  WalletManager instance
+</ParamField>
+
+<ParamField path="transactionEngine" type="TransactionEngine" required>
+  TransactionEngine instance
+</ParamField>
+
+<ParamField path="logger" type="AuditLogger" required>
+  AuditLogger for recording decisions
+</ParamField>
+
+<ParamField path="skills" type="SkillRegistry">
+  Custom skill registry (optional, uses default skills)
+</ParamField>
+
+<ParamField path="memory" type="MemoryStore">
+  Custom memory store (optional, uses default in-memory store)
+</ParamField>
+
+**Example:**
+```typescript
+import { AgentRuntime, WalletManager, TransactionEngine, Guardrails, AuditLogger } from '@karen/core'
+
+const config: AgentConfig = {
+  id: 'agent-1',
+  name: 'Trading Bot',
+  walletId: 'wallet-abc',
+  llmProvider: 'anthropic',
+  llmModel: 'claude-3-5-sonnet-20241022',
+  strategy: 'Buy low, sell high on SOL/USDC pair',
+  guardrails: {
+    maxSolPerTransaction: 1.0,
+    maxTransactionsPerMinute: 3,
+    dailySpendingLimitSol: 5.0,
+    allowedPrograms: ['JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'],
+    blockedAddresses: []
+  },
+  loopIntervalMs: 60000, // 1 minute
+  status: 'idle',
+  createdAt: new Date().toISOString()
+}
+
+const agent = new AgentRuntime(
+  config,
+  walletManager,
+  transactionEngine,
+  logger
+)
+```
+
+---
+
+## Lifecycle Management
+
+### start()
+
+Start the agent's autonomous loop.
+
+```typescript
+start(): void
+```
+
+The agent will:
+1. Observe its wallet state and recent transactions
+2. Ask the LLM to decide what action to take
+3. Execute the chosen skill
+4. Remember the decision
+5. Wait for `loopIntervalMs` and repeat
+
+**Example:**
+```typescript
+agent.start()
+console.log('Agent is now running autonomously')
+```
+
+---
+
+### stop()
+
+Stop the agent's loop permanently.
+
+```typescript
+stop(): void
+```
+
+**Example:**
+```typescript
+agent.stop()
+console.log('Agent stopped')
+```
+
+---
+
+### pause()
+
+Pause the agent's loop (can be resumed with `start()`).
+
+```typescript
+pause(): void
+```
+
+**Example:**
+```typescript
+agent.pause()
+// ... do something else
+agent.start() // Resume
+```
+
+---
+
+### getStatus()
+
+Get the agent's current status.
+
+```typescript
+getStatus(): AgentStatus
+```
+
+**Returns:** `'idle' | 'running' | 'paused' | 'stopped' | 'error'`
+
+**Example:**
+```typescript
+const status = agent.getStatus()
+if (status === 'running') {
+  console.log('Agent is active')
+}
+```
+
+---
+
+### getConfig()
+
+Get a copy of the agent's configuration.
+
+```typescript
+getConfig(): AgentConfig
+```
+
+**Example:**
+```typescript
+const config = agent.getConfig()
+console.log(`Agent: ${config.name}`)
+console.log(`Strategy: ${config.strategy}`)
+```
+
+---
+
+## Chat Interface
+
+### chat()
+
+Send a direct message to the agent and get a response. Used for human-in-the-loop interactions.
+
+```typescript
+async chat(message: string): Promise<string>
+```
+
+<ParamField path="message" type="string" required>
+  Message to send to the agent
+</ParamField>
+
+**Returns:** Agent's text response
+
+**Example:**
+```typescript
+const response = await agent.chat('What is your current balance?')
+console.log(response) // "I currently have 2.5 SOL and 100 USDC."
+```
+
+---
+
+## Agent Loop Phases
+
+The agent executes a four-phase loop every `loopIntervalMs` milliseconds:
+
+### 1. Observe
+
+Gathers current wallet state:
+- SOL and SPL token balances
+- Recent transaction history
+- Current cycle number
+
+**Observations object:**
+```typescript
+{
+  wallet: {
+    name: string
+    address: string
+  },
+  balances: {
+    sol: number
+    tokens: Array<{ mint: string, balance: number }>
+  },
+  recentTransactions: Array<{
+    type: string
+    status: string
+    details: object
+    timestamp: string
+  }>,
+  cycle: number,
+  timestamp: string
+}
+```
+
+---
+
+### 2. Think
+
+Sends observations and strategy to the LLM:
+- System prompt includes agent's strategy and constraints
+- Recent memory (last 10 cycles) for context
+- Tool definitions for all available skills
+
+LLM responds with:
+- **Reasoning**: Why it's making this decision
+- **Action**: Which skill to execute (or wait)
+
+---
+
+### 3. Act
+
+Executes the chosen skill:
+- `check_balance`: Check wallet balances
+- `swap`: Execute a token swap via Jupiter
+- `transfer`: Send SOL to another address
+- `airdrop`: Request devnet SOL
+- `stake_sol`: Stake SOL to a validator
+- `launch_token`: Create a new SPL token
+- ... and more (see [Skills Overview](/skills/overview) for full list)
+
+---
+
+### 4. Remember
+
+Persists the decision to memory and audit log:
+```typescript
+{
+  agentId: string
+  cycle: number
+  observations: object
+  reasoning: string
+  action: { skill: string, params: object } | null
+  outcome: string
+  timestamp: string
+}
+```
+
+---
+
+## System Prompt
+
+The agent's system prompt is automatically generated from its config:
+
+```text
+You are "[Agent Name]", an autonomous AI agent managing a Solana wallet on devnet.
+
+YOUR STRATEGY:
+[Agent's strategy from config]
+
+YOUR CONSTRAINTS:
+- Maximum [X] SOL per transaction
+- Maximum [Y] transactions per minute
+- Daily spending limit: [Z] SOL
+- You are on Solana DEVNET — these are not real funds
+
+YOUR BEHAVIOR:
+1. Analyze your current wallet state and recent activity
+2. Make a decision based on your strategy
+3. Use EXACTLY ONE skill per cycle, or "wait" if no action is needed
+4. Always provide clear reasoning for your decisions
+5. Be conservative — it's better to wait than make a bad trade
+6. Check your balance before making swaps or transfers
+7. If your SOL balance is low, consider requesting an airdrop
+```
+
+---
+
+## TypeScript Types
+
+```typescript
+interface AgentConfig {
+  id: string
+  name: string
+  walletId: string
+  llmProvider: 'openai' | 'anthropic' | 'grok' | 'gemini'
+  llmModel: string
+  strategy: string
+  guardrails: GuardrailConfig
+  loopIntervalMs: number
+  status: AgentStatus
+  createdAt: string
+}
+
+type AgentStatus = 'idle' | 'running' | 'paused' | 'stopped' | 'error'
+
+interface AgentDecision {
+  agentId: string
+  cycle: number
+  observations: Record<string, unknown>
+  reasoning: string
+  action: SkillInvocation | null
+  outcome?: string
+  timestamp: string
+}
+
+interface SkillInvocation {
+  skill: string
+  params: Record<string, unknown>
+}
+
+interface GuardrailConfig {
+  maxSolPerTransaction: number
+  maxTransactionsPerMinute: number
+  dailySpendingLimitSol: number
+  allowedPrograms: string[]
+  blockedAddresses: string[]
+}
+```
+
+---
+
+## LLM Providers
+
+AgentRuntime supports multiple LLM providers:
+
+| Provider | Models | Environment Variable |
+|----------|--------|---------------------|
+| OpenAI | gpt-4o, gpt-4-turbo | `OPENAI_API_KEY` |
+| Anthropic | claude-3-5-sonnet-20241022 | `ANTHROPIC_API_KEY` |
+| Grok | grok-2-1212 | `XAI_API_KEY` |
+| Gemini | gemini-2.0-flash-exp | `GOOGLE_AI_API_KEY` |
+
+**Example:**
+```typescript
+const config: AgentConfig = {
+  // ...
+  llmProvider: 'anthropic',
+  llmModel: 'claude-3-5-sonnet-20241022'
+}
+```
+
+---
+
+## Example: Complete Agent Setup
+
+```typescript
+import {
+  WalletManager,
+  TransactionEngine,
+  Guardrails,
+  AuditLogger,
+  AgentRuntime,
+  AgentConfig
+} from '@karen/core'
+
+// 1. Setup core services
+const walletManager = new WalletManager('secure-password')
+const logger = new AuditLogger()
+const guardrails = new Guardrails()
+const txEngine = new TransactionEngine(walletManager, guardrails, logger)
+
+// 2. Create wallet for agent
+const wallet = await walletManager.createWallet('agent-wallet', ['agent'])
+
+// 3. Fund wallet (devnet)
+await txEngine.airdrop(wallet.id, 2)
+
+// 4. Configure agent
+const config: AgentConfig = {
+  id: 'trader-1',
+  name: 'Degen Trader',
+  walletId: wallet.id,
+  llmProvider: 'anthropic',
+  llmModel: 'claude-3-5-sonnet-20241022',
+  strategy: 'Trade SOL/USDC. Buy when SOL dips below 200 USDC, sell when it rises above 220 USDC.',
+  guardrails: {
+    maxSolPerTransaction: 1.0,
+    maxTransactionsPerMinute: 3,
+    dailySpendingLimitSol: 5.0,
+    allowedPrograms: [
+      '11111111111111111111111111111111',
+      'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+      'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'
+    ],
+    blockedAddresses: []
+  },
+  loopIntervalMs: 120000, // 2 minutes
+  status: 'idle',
+  createdAt: new Date().toISOString()
+}
+
+// 5. Create and start agent
+const agent = new AgentRuntime(config, walletManager, txEngine, logger)
+agent.start()
+
+console.log('🤖 Agent is now running autonomously!')
+
+// 6. Chat with agent
+const response = await agent.chat('What\'s your current position?')
+console.log(response)
+
+// 7. Stop agent when done
+process.on('SIGINT', () => {
+  agent.stop()
+  process.exit(0)
+})
+```
+
+---
+
+## See Also
+
+- [WalletManager](/api-reference/wallet-manager) - Wallet creation and management
+- [TransactionEngine](/api-reference/transaction-engine) - Transaction execution
+- [Skills Reference](/skills/overview) - Available agent skills
+- [Agent Architecture](/core-concepts/agents) - How agents work internally

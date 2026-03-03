@@ -1,0 +1,355 @@
+---
+title: 'DeFi Operations'
+description: 'Token swaps via Jupiter, token info lookup, and SOL wrapping for DeFi protocols'
+---
+
+## Overview
+
+DeFi skills enable agents to interact with decentralized finance protocols on Solana. These skills focus on token swaps through Jupiter aggregator, token information lookup, and SOL wrapping for DeFi compatibility.
+
+## swap
+
+Execute a token swap via Jupiter DEX aggregator. Jupiter finds the best route across all Solana DEXes (Orca, Raydium, etc.) to get optimal pricing.
+
+### Parameters
+
+<ParamField path="inputToken" type="string" required>
+  Token to sell. Can be a symbol (e.g., "SOL", "USDC") or a mint address (base58 string).
+</ParamField>
+
+<ParamField path="outputToken" type="string" required>
+  Token to buy. Can be a symbol (e.g., "SOL", "USDC") or a mint address.
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount of input token to swap (in whole units, not lamports).
+</ParamField>
+
+<ParamField path="slippageBps" type="number">
+  Maximum slippage tolerance in basis points. Default: 50 (0.5%).
+  
+  Examples:
+  - 50 = 0.5%
+  - 100 = 1%
+  - 300 = 3%
+</ParamField>
+
+### Constraints
+
+<Warning>
+- Subject to per-transaction spending limit (default: 2 SOL equivalent)
+- Only tokens with devnet liquidity (on devnet)
+- Minimum swap: 0.01 SOL equivalent
+- Slippage violations will cause transaction to fail
+</Warning>
+
+### How Slippage Works
+
+Slippage protects you from unfavorable price movements during transaction execution:
+
+- Jupiter quotes an expected output amount
+- If actual output is less than `expected - (expected * slippageBps / 10000)`, the transaction fails
+- Higher slippage = more tolerance for price movement = higher success rate
+- Lower slippage = stricter price requirements = may fail in volatile markets
+
+### Example Invocation: SOL to USDC
+
+```json
+{
+  "skill": "swap",
+  "params": {
+    "inputToken": "SOL",
+    "outputToken": "USDC",
+    "amount": 0.5,
+    "slippageBps": 50
+  }
+}
+```
+
+### Example Response
+
+```
+Swap executed successfully!
+Sold: 0.5 SOL
+Received: ~12.4531 USDC
+Transaction: 3KL8nQ2...signature
+```
+
+### Example with Custom Slippage
+
+```json
+{
+  "skill": "swap",
+  "params": {
+    "inputToken": "USDC",
+    "outputToken": "SOL",
+    "amount": 10,
+    "slippageBps": 100
+  }
+}
+```
+
+<Tip>
+**Choosing Slippage:**
+- Low liquidity tokens: Use 100-300 bps (1-3%)
+- Stable swaps (USDC/USDT): Use 10-50 bps (0.1-0.5%)
+- Volatile conditions: Increase slippage to avoid failures
+</Tip>
+
+### Using Mint Addresses
+
+```json
+{
+  "skill": "swap",
+  "params": {
+    "inputToken": "So11111111111111111111111111111111111111112",
+    "outputToken": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "amount": 1.0
+  }
+}
+```
+
+---
+
+## token_info
+
+Look up information about a token including its mint address, decimals, supply, and initialization status.
+
+### Parameters
+
+<ParamField path="symbol" type="string" required>
+  Token symbol (e.g., "USDC", "BONK") or mint address. The system will attempt to resolve symbols to mint addresses.
+</ParamField>
+
+### Returns
+
+- Token symbol (as queried)
+- Mint address (public key)
+- Decimal places
+- Total supply
+- Initialization status (true/false)
+
+### Example Invocation
+
+```json
+{
+  "skill": "token_info",
+  "params": {
+    "symbol": "USDC"
+  }
+}
+```
+
+### Example Response
+
+```
+Token: USDC
+Mint: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+Decimals: 6
+Supply: 1000000000000
+Initialized: true
+```
+
+### Mainnet-Only Token Example
+
+```json
+{
+  "skill": "token_info",
+  "params": {
+    "symbol": "BONK"
+  }
+}
+```
+
+**Response:**
+```
+Token info for "BONK" (mint: DezXAZ...): Could not fetch on-chain data.
+This may be a mainnet-only token not available on devnet.
+```
+
+<Note>
+**Devnet vs Mainnet:** Many tokens only exist on mainnet. On devnet, only common test tokens (USDC, USDT) and tokens you create will be available.
+</Note>
+
+---
+
+## wrap_sol
+
+Convert native SOL to Wrapped SOL (wSOL), an SPL token representation of SOL. This is required for some DeFi protocols that only accept SPL tokens.
+
+### Parameters
+
+<ParamField path="amount" type="number" required>
+  Amount of SOL to wrap (in whole SOL units).
+</ParamField>
+
+### What is wSOL?
+
+Wrapped SOL (wSOL) is an SPL token with mint address `So11111111111111111111111111111111111111112` that represents native SOL in token form. This allows SOL to be used in protocols that only accept SPL tokens.
+
+**Key Properties:**
+- Always 1:1 with SOL
+- No slippage or fees for wrapping/unwrapping
+- Requires a token account (automatically created)
+- Rent-exempt balance required (~0.002 SOL)
+
+### Example Invocation
+
+```json
+{
+  "skill": "wrap_sol",
+  "params": {
+    "amount": 1.0
+  }
+}
+```
+
+### Example Response
+
+```
+Wrapped 1.0 SOL → wSOL!
+wSOL Account: 7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL
+Transaction: 5RT7pM9...signature
+```
+
+---
+
+## unwrap_sol
+
+Convert all Wrapped SOL (wSOL) back to native SOL by closing the wSOL token account. This reclaims both the wrapped SOL and the rent-exempt balance.
+
+### Parameters
+
+This skill requires no parameters. It automatically unwraps all wSOL in your wallet.
+
+### Example Invocation
+
+```json
+{
+  "skill": "unwrap_sol",
+  "params": {}
+}
+```
+
+### Example Response
+
+```
+Unwrapped 1.0000 wSOL → SOL!
+Transaction: 8QW3sL1...signature
+```
+
+<Info>
+**Automatic Cleanup:** Unwrapping closes the wSOL token account, reclaiming the rent-exempt balance (~0.002 SOL).
+</Info>
+
+---
+
+## Complete DeFi Workflow Example
+
+### Scenario: Agent wants to swap SOL for USDC, then back to SOL
+
+#### Cycle 1: Check Balance
+```json
+{"skill": "check_balance", "params": {}}
+```
+**Response:** `SOL: 5.0000 SOL`
+
+#### Cycle 2: Get USDC Token Info
+```json
+{
+  "skill": "token_info",
+  "params": {"symbol": "USDC"}
+}
+```
+**Response:** `Mint: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v, Decimals: 6`
+
+#### Cycle 3: Swap SOL to USDC
+```json
+{
+  "skill": "swap",
+  "params": {
+    "inputToken": "SOL",
+    "outputToken": "USDC",
+    "amount": 1.0,
+    "slippageBps": 50
+  }
+}
+```
+**Response:** `Sold: 1.0 SOL, Received: ~25.00 USDC`
+
+#### Cycle 4: Wait for Better Price
+```json
+{
+  "skill": "wait",
+  "params": {
+    "reason": "Waiting for SOL price to drop below 24 USDC before swapping back"
+  }
+}
+```
+
+#### Cycle 5: Swap USDC back to SOL
+```json
+{
+  "skill": "swap",
+  "params": {
+    "inputToken": "USDC",
+    "outputToken": "SOL",
+    "amount": 24,
+    "slippageBps": 50
+  }
+}
+```
+**Response:** `Sold: 24.0 USDC, Received: ~1.05 SOL` (Profit: 0.05 SOL)
+
+---
+
+## Jupiter Integration Details
+
+Karen uses Jupiter's aggregator API to find optimal swap routes:
+
+1. **Quote Request:** Karen requests quotes from Jupiter with specified parameters
+2. **Route Selection:** Jupiter analyzes routes across all Solana DEXes
+3. **Transaction Building:** Jupiter constructs the optimal swap transaction
+4. **Guardrail Check:** Karen's transaction engine validates against spending limits
+5. **Execution:** Transaction is signed and submitted to Solana
+6. **Confirmation:** Karen waits for confirmation and returns results
+
+<Tip>
+**Jupiter Advantages:**
+- Best pricing across all Solana DEXes
+- Automatic route splitting for large trades
+- MEV protection
+- Low fees (typically 0.01-0.05%)
+</Tip>
+
+---
+
+## Error Handling
+
+### Common Swap Errors
+
+- **Insufficient balance:** Clear error message with current balance
+- **Slippage exceeded:** Transaction failed due to price movement
+- **No route found:** Jupiter couldn't find a swap route (low liquidity)
+- **Guardrail blocked:** Transaction exceeds spending limits
+
+### Recovery Strategies
+
+1. **Slippage exceeded:** Increase `slippageBps` and retry
+2. **Insufficient balance:** Check balance and reduce swap amount
+3. **No route:** Token may not have liquidity on devnet
+4. **Guardrail blocked:** Reduce swap amount or wait for daily limit reset
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Token Management" icon="coins" href="/skills/token-management">
+    Learn how to create and manage SPL tokens
+  </Card>
+  
+  <Card title="Staking" icon="layer-group" href="/skills/staking">
+    Stake SOL to validators and earn rewards
+  </Card>
+</CardGroup>

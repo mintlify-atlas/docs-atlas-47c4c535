@@ -1,0 +1,728 @@
+---
+title: TypeScript SDK
+description: Use Karen as a library in your Node.js or TypeScript application for programmatic wallet and DeFi operations
+---
+
+## Overview
+
+Karen can be imported as a **TypeScript library** into your Node.js application, giving you programmatic access to all wallet management, transaction execution, and DeFi capabilities.
+
+This is ideal for:
+- **Building custom AI agents** with full control over the decision loop
+- **Integrating Solana wallets** into existing applications
+- **Creating trading bots** with custom strategies
+- **Developing autonomous systems** that need Solana blockchain interactions
+
+<Info>
+  Karen is built with TypeScript and provides full type definitions for all classes and methods.
+</Info>
+
+---
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install karen-wallet
+```
+
+```bash yarn
+yarn add karen-wallet
+```
+
+```bash pnpm
+pnpm add karen-wallet
+```
+</CodeGroup>
+
+<Note>
+  Package name is tentative. For now, clone the repo and import directly:
+  ```bash
+  git clone https://github.com/yourusername/karen.git
+  cd karen
+  npm install
+  npm run build
+  ```
+
+  Then in your project:
+  ```typescript
+  import { WalletManager, TransactionEngine } from '../path/to/karen/src'
+  ```
+</Note>
+
+---
+
+## Core Exports
+
+Karen exports the following modules from `src/index.ts`:
+
+```typescript
+// Agent runtime and orchestration
+export * from './agent'
+export { ApiServer } from './api/server'
+
+// Core wallet and transaction infrastructure
+export * from './core'
+
+// MCP server
+export { startMCPServer } from './mcp/server'
+
+// DeFi protocol adapters
+export * from './protocols'
+```
+
+### Main Classes
+
+<CardGroup cols={2}>
+  <Card title="WalletManager" icon="wallet">
+    Create and manage Solana wallets, HD derivation, balance queries
+  </Card>
+  <Card title="TransactionEngine" icon="exchange">
+    Execute transactions with guardrails, audit logging, history
+  </Card>
+  <Card title="AgentRuntime" icon="robot">
+    Autonomous agent loop with LLM integration and skill execution
+  </Card>
+  <Card title="Orchestrator" icon="server">
+    Manage multiple agents, create/start/stop, chat interface
+  </Card>
+  <Card title="ApiServer" icon="globe">
+    REST API server for HTTP access to all Karen features
+  </Card>
+  <Card title="Guardrails" icon="shield">
+    Security policies for spending limits, rate limiting, program whitelist
+  </Card>
+</CardGroup>
+
+---
+
+## Quick Start
+
+### Basic Wallet Operations
+
+```typescript
+import { WalletManager, TransactionEngine, Guardrails, AuditLogger } from 'karen-wallet'
+
+// Initialize services
+const password = 'your-secure-password'
+const walletManager = new WalletManager(password)
+const logger = new AuditLogger()
+const guardrails = new Guardrails(undefined, logger)
+const txEngine = new TransactionEngine(walletManager, guardrails, logger)
+
+// Create a wallet
+const wallet = await walletManager.createWallet('my-bot', ['trading', 'automated'])
+console.log('Wallet created:', wallet.publicKey)
+
+// Check balance
+const balance = await walletManager.getBalances(wallet.id)
+console.log('SOL balance:', balance.sol)
+console.log('Tokens:', balance.tokens)
+
+// Request devnet airdrop
+const airdropRecord = await txEngine.airdrop(wallet.id, 2)
+if (airdropRecord.status === 'confirmed') {
+  console.log('Airdrop successful:', airdropRecord.signature)
+}
+
+// Transfer SOL
+const transferRecord = await txEngine.transferSol(
+  wallet.id,
+  '7xKKzD8qHa...', // recipient address
+  0.5 // amount
+)
+
+if (transferRecord.status === 'confirmed') {
+  console.log('Transfer successful:', transferRecord.signature)
+} else if (transferRecord.status === 'blocked') {
+  console.error('Blocked by guardrails:', transferRecord.error)
+}
+```
+
+---
+
+## WalletManager
+
+Manages encrypted keystores, wallet creation, and balance queries.
+
+### Constructor
+
+```typescript
+import { WalletManager } from 'karen-wallet'
+
+const walletManager = new WalletManager(
+  password: string,           // Keystore encryption password
+  keystorePath?: string       // Optional custom path (default: ~/.karen/keystore.enc)
+)
+```
+
+### Methods
+
+<AccordionGroup>
+  <Accordion title="createWallet">
+    Create a new standalone wallet.
+
+    ```typescript
+    async createWallet(
+      name: string,
+      tags?: string[]
+    ): Promise<WalletInfo>
+    ```
+
+    **Example:**
+    ```typescript
+    const wallet = await walletManager.createWallet('trading-bot', ['automated'])
+    console.log('Wallet ID:', wallet.id)
+    console.log('Address:', wallet.publicKey)
+    ```
+  </Accordion>
+
+  <Accordion title="createDerivedWallet">
+    Create an HD-derived wallet from a mnemonic.
+
+    ```typescript
+    async createDerivedWallet(
+      name: string,
+      mnemonic: string,
+      index: number
+    ): Promise<WalletInfo>
+    ```
+
+    **Example:**
+    ```typescript
+    const mnemonic = WalletManager.generateMnemonic()
+    const wallet = await walletManager.createDerivedWallet(
+      'agent-1',
+      mnemonic,
+      0 // derivation index
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="getBalances">
+    Get SOL and SPL token balances.
+
+    ```typescript
+    async getBalances(walletId: string): Promise<{
+      sol: number
+      tokens: Array<{
+        mint: string
+        symbol?: string
+        uiBalance: string
+        rawBalance: string
+      }>
+    }>
+    ```
+
+    **Example:**
+    ```typescript
+    const { sol, tokens } = await walletManager.getBalances(wallet.id)
+    console.log(`Balance: ${sol} SOL`)
+    tokens.forEach(t => console.log(`  ${t.symbol}: ${t.uiBalance}`))
+    ```
+  </Accordion>
+
+  <Accordion title="listWallets">
+    List all managed wallets.
+
+    ```typescript
+    listWallets(): WalletInfo[]
+    ```
+  </Accordion>
+
+  <Accordion title="getWallet">
+    Get wallet by ID.
+
+    ```typescript
+    getWallet(walletId: string): WalletInfo | undefined
+    ```
+  </Accordion>
+
+  <Accordion title="findWalletByName">
+    Find wallet by name.
+
+    ```typescript
+    findWalletByName(name: string): WalletInfo | undefined
+    ```
+  </Accordion>
+
+  <Accordion title="getKeypair">
+    Get Solana keypair for signing (internal use).
+
+    ```typescript
+    getKeypair(walletId: string): Keypair
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## TransactionEngine
+
+Executes transactions with guardrails, audit logging, and transaction history.
+
+### Constructor
+
+```typescript
+import { TransactionEngine, Guardrails, AuditLogger } from 'karen-wallet'
+
+const txEngine = new TransactionEngine(
+  walletManager: WalletManager,
+  guardrails: Guardrails,
+  logger: AuditLogger
+)
+```
+
+### Methods
+
+<AccordionGroup>
+  <Accordion title="transferSol">
+    Send SOL to another address.
+
+    ```typescript
+    async transferSol(
+      walletId: string,
+      to: string,
+      amount: number,
+      source?: string  // Optional context (e.g., 'api', 'agent')
+    ): Promise<TransactionRecord>
+    ```
+
+    **Example:**
+    ```typescript
+    const record = await txEngine.transferSol(
+      wallet.id,
+      '7xKKzD8qHa...',
+      0.5,
+      'my-app'
+    )
+
+    if (record.status === 'confirmed') {
+      console.log('Tx signature:', record.signature)
+    } else if (record.status === 'blocked') {
+      console.error('Blocked:', record.error)
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="airdrop">
+    Request devnet SOL airdrop.
+
+    ```typescript
+    async airdrop(
+      walletId: string,
+      amount: number,
+      source?: string
+    ): Promise<TransactionRecord>
+    ```
+  </Accordion>
+
+  <Accordion title="getTransactionHistory">
+    Get transaction history.
+
+    ```typescript
+    getTransactionHistory(
+      walletId?: string,  // Optional: filter by wallet
+      limit: number = 20
+    ): TransactionRecord[]
+    ```
+
+    **Example:**
+    ```typescript
+    const txs = txEngine.getTransactionHistory(wallet.id, 50)
+    txs.forEach(tx => {
+      console.log(`${tx.type} - ${tx.status} - ${tx.timestamp}`)
+    })
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## DeFi Protocol Adapters
+
+Karen includes adapters for common Solana DeFi operations.
+
+### JupiterAdapter - Token Swaps
+
+```typescript
+import { JupiterAdapter, KNOWN_TOKENS } from 'karen-wallet'
+
+const jupiter = new JupiterAdapter()
+
+// Execute swap
+const result = await jupiter.executeSwap(
+  walletManager,
+  wallet.id,
+  'SOL',        // input token
+  'USDC',       // output token
+  0.5,          // amount
+  50            // slippage in bps (0.5%)
+)
+
+console.log('Swapped:', result.inputAmount, '→', result.outputAmount)
+console.log('Signature:', result.signature)
+
+// Known token addresses
+console.log(KNOWN_TOKENS.USDC)  // EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+```
+
+### TokenLauncherAdapter - Create SPL Tokens
+
+```typescript
+import { TokenLauncherAdapter } from 'karen-wallet'
+
+const launcher = new TokenLauncherAdapter()
+
+// Create a new token
+const token = await launcher.createToken(
+  walletManager,
+  wallet.id,
+  'Agent Coin',   // name
+  'AGT',          // symbol
+  9,              // decimals
+  1_000_000       // initial supply
+)
+
+console.log('Mint address:', token.mint)
+console.log('Supply:', token.supply)
+
+// Mint additional supply
+const mintResult = await launcher.mintAdditionalSupply(
+  walletManager,
+  wallet.id,
+  token.mint,
+  500_000,        // amount
+  9               // decimals
+)
+
+// Revoke mint authority (irreversible!)
+const sig = await launcher.revokeMintAuthority(
+  walletManager,
+  wallet.id,
+  token.mint
+)
+```
+
+### StakingAdapter - Native Staking
+
+```typescript
+import { StakingAdapter } from 'karen-wallet'
+
+const staking = new StakingAdapter()
+
+// Stake SOL
+const stakeResult = await staking.stakeSOL(
+  walletManager,
+  wallet.id,
+  1.0,  // amount
+  'BeachiopjxQxL7CaHNSZsynRdj6vY5vCeaTXGKqfCZTP'  // validator (optional)
+)
+
+console.log('Stake account:', stakeResult.stakeAccount)
+
+// List stake accounts
+const stakes = await staking.getStakeAccounts(wallet.publicKey)
+stakes.forEach(s => {
+  console.log(`${s.address}: ${s.solBalance} SOL (${s.state})`)
+})
+
+// Unstake
+await staking.unstakeSOL(walletManager, wallet.id, stakeResult.stakeAccount)
+
+// Withdraw (after 1 epoch)
+await staking.withdrawStake(walletManager, wallet.id, stakeResult.stakeAccount)
+```
+
+### WrappedSolAdapter - wSOL Operations
+
+```typescript
+import { WrappedSolAdapter } from 'karen-wallet'
+
+const wsol = new WrappedSolAdapter()
+
+// Wrap SOL
+const wrapResult = await wsol.wrapSOL(walletManager, wallet.id, 1.0)
+console.log('Wrapped:', wrapResult.amount, 'SOL')
+
+// Unwrap all wSOL
+const unwrapResult = await wsol.unwrapSOL(walletManager, wallet.id)
+console.log('Unwrapped:', unwrapResult.amount, 'wSOL')
+```
+
+### SplTokenAdapter - Token Account Management
+
+```typescript
+import { SplTokenAdapter } from 'karen-wallet'
+
+const spl = new SplTokenAdapter()
+
+// Burn tokens
+const burnResult = await spl.burnTokens(
+  walletManager,
+  wallet.id,
+  '7xKKzD8qHa...',  // mint address
+  100               // amount
+)
+
+// Close empty token account (reclaim rent)
+const closeResult = await spl.closeTokenAccount(
+  walletManager,
+  wallet.id,
+  '7xKKzD8qHa...'
+)
+
+console.log('Rent reclaimed:', closeResult.rentReclaimed, 'SOL')
+```
+
+---
+
+## Building Custom Agents
+
+### Using AgentRuntime
+
+```typescript
+import { AgentRuntime, createDefaultSkillRegistry, MemoryStore } from 'karen-wallet'
+
+const config = {
+  id: 'agent-1',
+  name: 'Trading Bot',
+  walletId: wallet.id,
+  strategy: 'Buy low, sell high on SOL/USDC',
+  llmProvider: 'openai' as const,
+  llmModel: 'gpt-4',
+  loopIntervalMs: 30000,
+  maxSolPerTransaction: 2,
+  dailySpendingLimitSol: 10
+}
+
+const skillRegistry = createDefaultSkillRegistry(walletManager, txEngine)
+const memory = new MemoryStore()
+
+const agent = new AgentRuntime(
+  config,
+  skillRegistry,
+  walletManager,
+  txEngine,
+  guardrails,
+  logger,
+  memory
+)
+
+// Start autonomous loop
+agent.start()
+
+// Chat with agent
+const response = await agent.chat('What is your current balance?')
+console.log('Agent:', response)
+
+// Stop agent
+agent.stop()
+```
+
+### Using Orchestrator (Multiple Agents)
+
+```typescript
+import { Orchestrator } from 'karen-wallet'
+
+const orchestrator = new Orchestrator(
+  walletManager,
+  txEngine,
+  guardrails,
+  logger
+)
+
+// Create agent
+const agentConfig = await orchestrator.createAgent({
+  name: 'trader-1',
+  strategy: 'Momentum trading on SOL/USDC',
+  llmProvider: 'anthropic',
+  llmModel: 'claude-3-5-sonnet-20241022',
+  loopIntervalMs: 60000
+})
+
+// Start agent
+orchestrator.startAgent(agentConfig.id)
+
+// List all agents
+const agents = orchestrator.listAgents()
+console.log('Running agents:', agents.filter(a => a.status === 'running'))
+
+// Stop all
+orchestrator.stopAll()
+```
+
+---
+
+## Guardrails Configuration
+
+```typescript
+import { Guardrails, AuditLogger } from 'karen-wallet'
+
+const customGuardrails = new Guardrails(
+  {
+    maxSolPerTransaction: 5,
+    maxTransactionsPerMinute: 10,
+    dailySpendingLimitSol: 50,
+    allowedPrograms: [
+      '11111111111111111111111111111111',  // System
+      'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',  // Token Program
+      'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'   // Jupiter
+    ]
+  },
+  new AuditLogger()
+)
+```
+
+---
+
+## API Server Integration
+
+```typescript
+import { ApiServer } from 'karen-wallet'
+
+const apiServer = new ApiServer(
+  walletManager,
+  txEngine,
+  guardrails,
+  logger,
+  orchestrator
+)
+
+apiServer.start(3001)
+// Server running on http://localhost:3001
+```
+
+---
+
+## Type Definitions
+
+### WalletInfo
+
+```typescript
+type WalletInfo = {
+  id: string
+  name: string
+  publicKey: string
+  tags: string[]
+  createdAt: string
+  metadata?: Record<string, any>
+}
+```
+
+### TransactionRecord
+
+```typescript
+type TransactionRecord = {
+  id: string
+  type: string
+  walletId: string
+  status: 'pending' | 'confirmed' | 'failed' | 'blocked'
+  signature?: string
+  error?: string
+  metadata?: Record<string, any>
+  guardrailsApplied?: string[]
+  timestamp: string
+}
+```
+
+### AgentConfig
+
+```typescript
+type AgentConfig = {
+  id: string
+  name: string
+  walletId: string
+  strategy: string
+  llmProvider: 'openai' | 'anthropic' | 'grok' | 'gemini'
+  llmModel?: string
+  loopIntervalMs: number
+  maxSolPerTransaction: number
+  dailySpendingLimitSol: number
+  status: 'idle' | 'running' | 'stopped' | 'error'
+  createdAt: string
+}
+```
+
+---
+
+## Complete Example: Trading Bot
+
+```typescript
+import {
+  WalletManager,
+  TransactionEngine,
+  Guardrails,
+  AuditLogger,
+  JupiterAdapter
+} from 'karen-wallet'
+
+async function main() {
+  // Setup
+  const walletManager = new WalletManager('secure-password')
+  const logger = new AuditLogger()
+  const guardrails = new Guardrails(undefined, logger)
+  const txEngine = new TransactionEngine(walletManager, guardrails, logger)
+  const jupiter = new JupiterAdapter()
+
+  // Create wallet
+  const wallet = await walletManager.createWallet('trading-bot')
+  console.log('Wallet:', wallet.publicKey)
+
+  // Fund with devnet SOL
+  await txEngine.airdrop(wallet.id, 2)
+  console.log('Funded with 2 SOL')
+
+  // Trading loop
+  setInterval(async () => {
+    const { sol, tokens } = await walletManager.getBalances(wallet.id)
+    const usdc = tokens.find(t => t.symbol === 'USDC')
+
+    console.log(`Balance: ${sol} SOL, ${usdc?.uiBalance || 0} USDC`)
+
+    // Simple strategy: buy USDC if SOL > 1, sell if USDC > 20
+    if (sol > 1) {
+      const result = await jupiter.executeSwap(
+        walletManager,
+        wallet.id,
+        'SOL',
+        'USDC',
+        0.5,
+        50
+      )
+      console.log('Bought USDC:', result.outputAmount)
+    } else if (parseFloat(usdc?.uiBalance || '0') > 20) {
+      const result = await jupiter.executeSwap(
+        walletManager,
+        wallet.id,
+        'USDC',
+        'SOL',
+        10,
+        50
+      )
+      console.log('Bought SOL:', result.outputAmount)
+    }
+  }, 60000)  // Every minute
+}
+
+main().catch(console.error)
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="book" href="/api-reference/wallets">
+    Detailed class and method documentation
+  </Card>
+  <Card title="CLI" icon="terminal" href="/integration/cli">
+    Command-line interface reference
+  </Card>
+  <Card title="MCP Server" icon="plug" href="/integration/mcp-server">
+    Integrate with Claude Desktop
+  </Card>
+  <Card title="Build Agents" icon="robot" href="/core-concepts/agents">
+    Create autonomous AI agents
+  </Card>
+</CardGroup>

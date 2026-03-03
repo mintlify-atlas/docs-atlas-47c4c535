@@ -1,0 +1,412 @@
+---
+title: "Creating Custom Skills"
+description: "Build custom agent capabilities by implementing the Skill interface and registering them with the SkillRegistry"
+---
+
+Karen's agent system is built on a pluggable skill architecture. Each skill represents a self-contained capability that the LLM can invoke through function calling. This guide shows you how to create custom skills to extend your agents' capabilities.
+
+## Skill Architecture
+
+Skills in Karen follow a simple but powerful pattern:
+
+- **Skill Interface**: Defines the contract for a skill (name, description, parameters, execute function)
+- **Skill Registry**: Central registry that manages all available skills
+- **Skill Context**: Provides access to wallet manager, transaction engine, and protocol adapters
+- **LLM Integration**: Skills are automatically exposed to the LLM as function tools
+
+## The Skill Interface
+
+Every skill must implement the `Skill` interface defined in `src/agent/skills/index.ts:27`:
+
+```typescript
+export interface Skill {
+  name: string
+  description: string
+  parameters: Record<string, any>
+  execute(
+    params: Record<string, unknown>,
+    context: SkillContext,
+  ): Promise<string>
+}
+```
+
+### Skill Context
+
+The `SkillContext` provides access to all core infrastructure (`src/agent/skills/index.ts:15`):
+
+```typescript
+export interface SkillContext {
+  walletId: string
+  agentId: string
+  walletManager: WalletManager
+  transactionEngine: TransactionEngine
+  jupiter: JupiterAdapter
+  splToken: SplTokenAdapter
+  tokenLauncher: TokenLauncherAdapter
+  staking: StakingAdapter
+  wrappedSol: WrappedSolAdapter
+}
+```
+
+This gives your custom skill access to:
+
+- **Wallet operations**: Create, sign, and manage wallets
+- **Transaction execution**: Submit transactions with guardrail protection
+- **DeFi protocols**: Jupiter swaps, SPL tokens, staking, and more
+
+## Creating a Custom Skill
+
+Let's create a custom skill that checks the current SOL price from an oracle and executes a conditional swap.
+
+<Steps>
+  <Step title="Define the Skill Object">
+    Create a new file `src/agent/skills/price-monitor.ts`:
+
+    ```typescript
+    import { Skill, SkillContext } from './index'
+
+    export const priceMonitorSkill: Skill = {
+      name: 'monitor_price',
+      description: 'Check the current SOL/USDC price and conditionally swap if it meets a threshold',
+      parameters: {
+        type: 'object',
+        properties: {
+          targetPrice: {
+            type: 'number',
+            description: 'Target SOL price in USDC to trigger a swap',
+          },
+          amount: {
+            type: 'number',
+            description: 'Amount of SOL to swap if target is met',
+          },
+          condition: {
+            type: 'string',
+            enum: ['above', 'below'],
+            description: 'Whether to swap when price is above or below target',
+          },
+        },
+        required: ['targetPrice', 'amount', 'condition'],
+      },
+      async execute(params, context) {
+        // Implementation below
+      },
+    }
+    ```
+  </Step>
+
+  <Step title="Implement the Execute Function">
+    The execute function contains your skill's logic:
+
+    ```typescript
+    async execute(params, context) {
+      const targetPrice = Number(params.targetPrice)
+      const amount = Number(params.amount)
+      const condition = String(params.condition)
+
+      // Get current SOL/USDC price from Jupiter
+      const quote = await context.jupiter.getQuote('SOL', 'USDC', 1, 50)
+      const currentPrice = quote.expectedOutputAmount
+
+      let shouldSwap = false
+      if (condition === 'above' && currentPrice > targetPrice) {
+        shouldSwap = true
+      } else if (condition === 'below' && currentPrice < targetPrice) {
+        shouldSwap = true
+      }
+
+      if (!shouldSwap) {
+        return `Price monitoring: Current SOL price is ${currentPrice.toFixed(2)} USDC. Target ${condition} ${targetPrice} not met. No action taken.`
+      }
+
+      // Execute the swap
+      const result = await context.jupiter.executeSwap(
+        context.walletManager,
+        context.walletId,
+        'SOL',
+        'USDC',
+        amount,
+        50, // 0.5% slippage
+      )
+
+      return (
+        `Price threshold met! Swapped ${amount} SOL → ${result.expectedOutputAmount.toFixed(2)} USDC at ${currentPrice.toFixed(2)} USDC/SOL\n` +
+        `Transaction: ${result.signature}`
+      )
+    }
+    ```
+  </Step>
+
+  <Step title="Register the Skill">
+    Add your skill to the registry in `src/agent/skills/index.ts:695`:
+
+    ```typescript
+    import { priceMonitorSkill } from './price-monitor'
+
+    export function createDefaultSkillRegistry(): SkillRegistry {
+      const registry = new SkillRegistry()
+
+      // Core skills
+      registry.register(balanceSkill)
+      registry.register(swapSkill)
+      // ... other built-in skills
+
+      // Custom skills
+      registry.register(priceMonitorSkill)
+
+      return registry
+    }
+    ```
+  </Step>
+
+  <Step title="Use the Skill">
+    Once registered, your skill is automatically available to all agents:
+
+    ```bash
+    npx tsx src/cli/index.ts agent create \
+      --name "Price-Monitor" \
+      --strategy "Monitor SOL price and swap when it goes above 150 USDC" \
+      --llm openai
+
+    npx tsx src/cli/index.ts agent start --name "Price-Monitor"
+    ```
+
+    The agent can now invoke `monitor_price` in its decision loop.
+  </Step>
+</Steps>
+
+## Built-in Skill Examples
+
+Karen includes 17 built-in skills. Here are some examples to learn from:
+
+### Simple Skill: Check Balance
+
+The balance skill shows how to access wallet data (`src/agent/skills/index.ts:94`):
+
+<CodeGroup>
+```typescript Balance Skill
+export const balanceSkill: Skill = {
+  name: 'check_balance',
+  description: 'Check your current wallet balances including SOL and all SPL tokens',
+  parameters: {
+    type: 'object',
+    properties: {},
+    required: [],
+  },
+  async execute(_params, context) {
+    const balances = await context.walletManager.getBalances(context.walletId)
+    const wallet = context.walletManager.getWallet(context.walletId)
+
+    let result = `Wallet: ${wallet?.name} (${wallet?.publicKey})\n`
+    result += `SOL: ${balances.sol.toFixed(4)} SOL\n`
+
+    if (balances.tokens.length > 0) {
+      result += `\nTokens:\n`
+      for (const t of balances.tokens) {
+        result += `  ${t.mint}: ${t.uiBalance} (${t.decimals} decimals)\n`
+      }
+    } else {
+      result += `No SPL token holdings.`
+    }
+
+    return result
+  },
+}
+```
+</CodeGroup>
+
+### Complex Skill: Jupiter Swap
+
+The swap skill demonstrates transaction execution with guardrails (`src/agent/skills/index.ts:123`):
+
+<CodeGroup>
+```typescript Swap Skill
+export const swapSkill: Skill = {
+  name: 'swap',
+  description: 'Swap one token for another using Jupiter DEX. Example: swap SOL for USDC.',
+  parameters: {
+    type: 'object',
+    properties: {
+      inputToken: {
+        type: 'string',
+        description: 'Token to sell (e.g., "SOL", "USDC", or a mint address)',
+      },
+      outputToken: {
+        type: 'string',
+        description: 'Token to buy (e.g., "SOL", "USDC", or a mint address)',
+      },
+      amount: {
+        type: 'number',
+        description: 'Amount of input token to swap',
+      },
+      slippageBps: {
+        type: 'number',
+        description: 'Maximum slippage in basis points (default: 50 = 0.5%)',
+      },
+    },
+    required: ['inputToken', 'outputToken', 'amount'],
+  },
+  async execute(params, context) {
+    const inputToken = String(params.inputToken)
+    const outputToken = String(params.outputToken)
+    const amount = Number(params.amount)
+    const slippageBps = Number(params.slippageBps || 50)
+
+    // First get a quote
+    const quote = await context.jupiter.getQuote(
+      inputToken,
+      outputToken,
+      amount,
+      slippageBps,
+    )
+
+    // Build a swap transaction record through the transaction engine
+    const result = await context.jupiter.executeSwap(
+      context.walletManager,
+      context.walletId,
+      inputToken,
+      outputToken,
+      amount,
+      slippageBps,
+    )
+
+    return (
+      `Swap executed successfully!\n` +
+      `Sold: ${result.inputAmount} ${inputToken}\n` +
+      `Received: ~${result.expectedOutputAmount.toFixed(4)} ${outputToken}\n` +
+      `Transaction: ${result.signature}`
+    )
+  },
+}
+```
+</CodeGroup>
+
+## Parameter Validation
+
+The `parameters` field uses JSON Schema format. The LLM uses this schema to understand how to call your skill:
+
+```typescript
+parameters: {
+  type: 'object',
+  properties: {
+    amount: {
+      type: 'number',
+      description: 'Amount in SOL (must be positive)',
+    },
+    recipient: {
+      type: 'string',
+      description: 'Base58-encoded public key of recipient',
+    },
+    urgent: {
+      type: 'boolean',
+      description: 'Whether to use higher priority fees',
+    },
+  },
+  required: ['amount', 'recipient'],
+}
+```
+
+<Info>
+Always provide clear descriptions for each parameter. The LLM relies on these descriptions to understand how to use your skill correctly.
+</Info>
+
+## Error Handling
+
+Return error messages as strings. The SkillRegistry automatically catches exceptions (`src/agent/skills/index.ts:82`):
+
+```typescript
+async execute(params, context) {
+  try {
+    // Validate inputs
+    const amount = Number(params.amount)
+    if (amount <= 0) {
+      return 'Error: Amount must be positive'
+    }
+
+    // Execute operation
+    const result = await context.transactionEngine.transferSol(
+      context.walletId,
+      String(params.to),
+      amount,
+      context.agentId,
+    )
+
+    if (result.status === 'blocked') {
+      return `Transfer blocked by guardrails: ${result.error}`
+    }
+
+    if (result.status === 'failed') {
+      return `Transfer failed: ${result.error}`
+    }
+
+    return `Success: ${result.signature}`
+  } catch (error: any) {
+    return `Error: ${error.message}`
+  }
+}
+```
+
+## Testing Your Skill
+
+Test skills by creating a test agent with a targeted strategy:
+
+```bash
+# Create agent that will use your custom skill
+npx tsx src/cli/index.ts agent create \
+  --name "Skill-Tester" \
+  --strategy "Test the monitor_price skill by checking if SOL is above 100 USDC" \
+  --llm openai
+
+# Start the agent and watch its decisions
+npx tsx src/cli/index.ts agent start --name "Skill-Tester"
+```
+
+Monitor the agent's decisions in the dashboard or logs to see if it correctly invokes your skill.
+
+## Advanced: Dynamic Skill Loading
+
+For production use, you can create a dynamic skill loader:
+
+```typescript
+import { readdirSync } from 'fs'
+import { join } from 'path'
+
+export async function loadCustomSkills(directory: string): Promise<Skill[]> {
+  const skills: Skill[] = []
+  const files = readdirSync(directory)
+
+  for (const file of files) {
+    if (file.endsWith('.skill.ts') || file.endsWith('.skill.js')) {
+      const module = await import(join(directory, file))
+      if (module.default && typeof module.default.execute === 'function') {
+        skills.push(module.default)
+      }
+    }
+  }
+
+  return skills
+}
+
+// Usage
+const customSkills = await loadCustomSkills('./skills/custom')
+customSkills.forEach(skill => registry.register(skill))
+```
+
+<Warning>
+Custom skills have full access to wallet operations and can execute transactions. Always validate inputs and test thoroughly before deploying to production.
+</Warning>
+
+## Best Practices
+
+1. **Clear Naming**: Use descriptive skill names that indicate what the skill does
+2. **Detailed Descriptions**: Write comprehensive descriptions for both the skill and its parameters
+3. **Input Validation**: Always validate and sanitize user inputs
+4. **Error Messages**: Return helpful error messages that explain what went wrong
+5. **Return Format**: Return human-readable strings that the LLM can understand
+6. **Transaction Safety**: Use the `transactionEngine` to ensure guardrails are applied
+7. **Idempotency**: Design skills to be safely retried if needed
+
+## Next Steps
+
+- Learn about [Configuration](/development/configuration) to adjust guardrails and LLM settings
+- Monitor your agents using the [Dashboard](/development/dashboard)
+- Review the [API Reference](/api-reference/wallets) for external integration

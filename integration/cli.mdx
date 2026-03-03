@@ -1,0 +1,793 @@
+---
+title: CLI Reference
+description: Complete command-line interface reference for Karen wallet operations, agent management, and server control
+---
+
+## Overview
+
+Karen provides a comprehensive **command-line interface** for all wallet and agent operations. The CLI is built with Commander.js and supports:
+
+- **Wallet management** (create, list, balance, send, airdrop)
+- **DeFi operations** (token launch, staking, wrapped SOL)
+- **Agent lifecycle** (create, start/stop, chat)
+- **Server control** (REST API, MCP server)
+- **Transaction history** and audit logs
+
+<Info>
+  The CLI reads configuration from `.env` and stores encrypted keystores in `~/.karen/keystore.enc`
+</Info>
+
+---
+
+## Installation
+
+<Steps>
+  <Step title="Clone and build">
+    ```bash
+    git clone https://github.com/yourusername/karen.git
+    cd karen
+    npm install
+    npm run build
+    ```
+  </Step>
+
+  <Step title="Link globally (optional)">
+    ```bash
+    npm link
+    ```
+    This makes `karen` available globally in your terminal.
+  </Step>
+
+  <Step title="Configure environment">
+    Create `.env`:
+    ```bash
+    KEYSTORE_PASSWORD=your-secure-password
+    SOLANA_NETWORK=devnet
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Global Options
+
+```bash
+karen --version          # Show version
+karen --help             # Show help for all commands
+karen <command> --help   # Show help for specific command
+```
+
+---
+
+## Wallet Commands
+
+All wallet operations are under the `karen wallet` namespace.
+
+### Create Wallet
+
+Create a new standalone or HD-derived wallet.
+
+<CodeGroup>
+```bash Standalone
+karen wallet create --name my-wallet
+```
+
+```bash HD-Derived
+karen wallet create \
+  --name agent-1 \
+  --mnemonic "your 24 word mnemonic here..." \
+  --index 0
+```
+</CodeGroup>
+
+**Options:**
+<ParamField path="--name, -n" type="string" required>
+  Wallet name (default: `my-wallet`)
+</ParamField>
+<ParamField path="--mnemonic, -m" type="string">
+  Master mnemonic for HD derivation (24 words)
+</ParamField>
+<ParamField path="--index, -i" type="number" default="0">
+  Derivation index for HD wallets
+</ParamField>
+
+**Output:**
+```
+✅ Wallet created:
+   Name:    my-wallet
+   ID:      550e8400-e29b-41d4-a716-446655440000
+   Address: 7xKKzD8qHa...
+```
+
+---
+
+### List Wallets
+
+```bash
+karen wallet list
+```
+
+**Output:**
+```
+📜 Wallets (3):
+
+  trading-bot (550e8400...)
+    Address: 7xKKzD8qHa...
+    Tags: automated, trading
+    Created: 2024-01-15T10:30:00Z
+
+  agent-1 (660f9511...)
+    Address: 9xYzW5pQr...
+    Tags: mcp, external
+    Created: 2024-01-16T14:20:00Z
+```
+
+---
+
+### Check Balance
+
+```bash
+karen wallet balance --name my-wallet
+```
+
+**Options:**
+<ParamField path="--name, -n" type="string" required>
+  Wallet name to query
+</ParamField>
+
+**Output:**
+```
+💰 my-wallet (7xKKzD8qHa...):
+
+  SOL: 1.5000
+
+  Tokens:
+    EPjFWdd5...: 100.50 USDC
+    DezXAZ8z...: 50.00 BONK
+```
+
+---
+
+### Request Airdrop
+
+```bash
+karen wallet airdrop --name my-wallet --amount 2
+```
+
+**Options:**
+<ParamField path="--name, -n" type="string" required>
+  Wallet name to fund
+</ParamField>
+<ParamField path="--amount, -a" type="number" default="1">
+  Amount of SOL to request (max 2 per request on devnet)
+</ParamField>
+
+**Output:**
+```
+⏳ Requesting 2 SOL airdrop...
+✅ Airdropped 2 SOL
+   Signature: 5Kn8fGzXv...
+```
+
+<Warning>
+  Airdrop only works on **devnet**. Mainnet requires purchasing SOL from an exchange.
+</Warning>
+
+---
+
+### Send SOL
+
+```bash
+karen wallet send \
+  --name my-wallet \
+  --to 7xKKzD8qHa... \
+  --amount 0.5
+```
+
+**Options:**
+<ParamField path="--name, -n" type="string" required>
+  Source wallet name
+</ParamField>
+<ParamField path="--to, -t" type="string" required>
+  Recipient Solana address (base58)
+</ParamField>
+<ParamField path="--amount, -a" type="number" required>
+  Amount of SOL to send
+</ParamField>
+
+**Output:**
+```
+⏳ Sending 0.5 SOL to 7xKKzD8qHa...
+✅ Sent 0.5 SOL
+   Signature: 5Kn8fGzXv...
+```
+
+**Guardrails:**
+- Max 2 SOL per transaction (default)
+- Max 5 transactions per minute
+- Daily spending limit: 10 SOL
+
+If blocked:
+```
+🛡️ Blocked by guardrails: Amount exceeds maxSolPerTransaction (2 SOL)
+```
+
+---
+
+### Generate Master Mnemonic
+
+```bash
+karen wallet mnemonic
+```
+
+**Output:**
+```
+🔑 New Master Mnemonic (24 words):
+
+   abandon ability able about above absent absorb abstract absurd abuse access accident
+   account accuse achieve acid acoustic acquire across act action actor actress actual
+
+   ⚠️  Store this securely! Anyone with this can derive all agent wallets.
+```
+
+<Warning>
+  **Never share your mnemonic**. Store it in a password manager or hardware wallet. This phrase can recover all HD-derived wallets.
+</Warning>
+
+---
+
+## DeFi Wallet Commands
+
+### Launch Token
+
+Create a new SPL token with initial supply.
+
+```bash
+karen wallet launch-token \
+  --name my-wallet \
+  --token-name "Agent Coin" \
+  --symbol AGT \
+  --decimals 9 \
+  --supply 1000000
+```
+
+**Options:**
+<ParamField path="--name, -n" type="string" required>
+  Wallet name (you become mint authority)
+</ParamField>
+<ParamField path="--token-name" type="string" required>
+  Token full name
+</ParamField>
+<ParamField path="--symbol" type="string" required>
+  Token ticker symbol (e.g., AGT)
+</ParamField>
+<ParamField path="--decimals" type="number" default="9">
+  Decimal places
+</ParamField>
+<ParamField path="--supply" type="number" default="1000000">
+  Initial supply in whole units
+</ParamField>
+
+**Output:**
+```
+⏳ Launching token AGT...
+✅ Token launched!
+   Name:    Agent Coin (AGT)
+   Mint:    7xKKzD8qHa...
+   Supply:  1,000,000
+   Tx:      5Kn8fGzXv...
+```
+
+---
+
+### Mint Additional Supply
+
+```bash
+karen wallet mint-supply \
+  --name my-wallet \
+  --mint 7xKKzD8qHa... \
+  --amount 500000 \
+  --decimals 9
+```
+
+**Options:**
+<ParamField path="--mint" type="string" required>
+  Token mint address
+</ParamField>
+<ParamField path="--amount, -a" type="number" required>
+  Amount to mint in whole units
+</ParamField>
+<ParamField path="--decimals" type="number" default="9">
+  Token decimals
+</ParamField>
+
+---
+
+### Revoke Authority
+
+Permanently revoke mint or freeze authority. **Irreversible!**
+
+```bash
+karen wallet revoke-authority \
+  --name my-wallet \
+  --mint 7xKKzD8qHa... \
+  --type mint
+```
+
+**Options:**
+<ParamField path="--type" type="string" default="mint">
+  Authority type: `mint` or `freeze`
+</ParamField>
+
+**Output:**
+```
+⚠️  Revoking mint authority (IRREVERSIBLE)...
+✅ mint authority permanently revoked
+   Tx: 5Kn8fGzXv...
+```
+
+---
+
+### Stake SOL
+
+```bash
+karen wallet stake \
+  --name my-wallet \
+  --amount 1.0 \
+  --validator BeachiopjxQxL7CaHNSZsynRdj6vY5vCeaTXGKqfCZTP
+```
+
+**Options:**
+<ParamField path="--amount, -a" type="number" required>
+  Amount of SOL to stake
+</ParamField>
+<ParamField path="--validator, -v" type="string">
+  Validator vote account (optional — uses default devnet validator)
+</ParamField>
+
+**Output:**
+```
+⏳ Staking 1.0 SOL...
+✅ Staked 1.0 SOL
+   Stake Account: 9xYzW5pQr...
+   Validator:     BeachiopjxQxL7CaHNSZsynRdj6vY5vCeaTXGKqfCZTP
+   Tx:            5Kn8fGzXv...
+```
+
+---
+
+### Unstake SOL
+
+Deactivate a stake account (withdrawal available after 1 epoch).
+
+```bash
+karen wallet unstake \
+  --name my-wallet \
+  --stake-account 9xYzW5pQr...
+```
+
+**Options:**
+<ParamField path="--stake-account, -s" type="string" required>
+  Stake account public key
+</ParamField>
+
+---
+
+### Withdraw Stake
+
+```bash
+karen wallet withdraw-stake \
+  --name my-wallet \
+  --stake-account 9xYzW5pQr...
+```
+
+---
+
+### List Stake Accounts
+
+```bash
+karen wallet stakes --name my-wallet
+```
+
+**Output:**
+```
+🥩 Stake Accounts (2):
+
+  9xYzW5pQr...
+    Balance:  1.0000 SOL
+    State:    active
+    Validator: BeachiopjxQxL7CaHNSZsynRdj6vY5vCeaTXGKqfCZTP
+
+  5KnAbC3d...
+    Balance:  0.5000 SOL
+    State:    deactivating
+    Validator: N/A
+```
+
+---
+
+### Burn Tokens
+
+```bash
+karen wallet burn \
+  --name my-wallet \
+  --mint 7xKKzD8qHa... \
+  --amount 100
+```
+
+---
+
+### Close Token Account
+
+Close an empty token account to reclaim rent (~0.002 SOL).
+
+```bash
+karen wallet close-account \
+  --name my-wallet \
+  --mint 7xKKzD8qHa...
+```
+
+**Output:**
+```
+✅ Token account closed
+   Rent reclaimed: 0.002039 SOL
+   Tx: 5Kn8fGzXv...
+```
+
+---
+
+### Wrap/Unwrap SOL
+
+<CodeGroup>
+```bash Wrap
+karen wallet wrap-sol \
+  --name my-wallet \
+  --amount 1.0
+```
+
+```bash Unwrap
+karen wallet unwrap-sol \
+  --name my-wallet
+```
+</CodeGroup>
+
+---
+
+## Agent Commands
+
+Manage autonomous AI agents that run trading strategies.
+
+### Create Agent
+
+```bash
+karen agent create \
+  --name trader-bot \
+  --strategy "Buy low, sell high on SOL/USDC" \
+  --llm openai \
+  --model gpt-4 \
+  --interval 30000 \
+  --max-per-tx 2 \
+  --daily-limit 10
+```
+
+**Options:**
+<ParamField path="--name, -n" type="string" required>
+  Agent name
+</ParamField>
+<ParamField path="--strategy, -s" type="string" required>
+  Trading strategy description (used as LLM system prompt)
+</ParamField>
+<ParamField path="--llm, -l" type="string" default="openai">
+  LLM provider: `openai`, `anthropic`, `grok`, or `gemini`
+</ParamField>
+<ParamField path="--model, -m" type="string">
+  LLM model (defaults depend on provider)
+  - OpenAI: `gpt-4o-mini`
+  - Anthropic: `claude-3-5-sonnet-20241022`
+  - Grok: `grok-beta`
+  - Gemini: `gemini-2.0-flash-exp`
+</ParamField>
+<ParamField path="--interval" type="number" default="30000">
+  Loop interval in milliseconds (30000 = 30 seconds)
+</ParamField>
+<ParamField path="--max-per-tx" type="number" default="2">
+  Max SOL per transaction
+</ParamField>
+<ParamField path="--daily-limit" type="number" default="10">
+  Daily spending limit in SOL
+</ParamField>
+
+**Output:**
+```
+✅ Agent created:
+   Name:     trader-bot
+   ID:       550e8400-e29b-41d4-a716-446655440000
+   Wallet:   660f9511-f3ac-52e5-b827-557766551111
+   LLM:      openai (gpt-4)
+   Strategy: Buy low, sell high on SOL/USDC
+
+   Start with: karen agent start --name trader-bot
+```
+
+---
+
+### List Agents
+
+```bash
+karen agent list
+```
+
+**Output:**
+```
+🤖 Agents (2):
+
+  trader-bot (550e8400...)
+    Status:   running
+    Wallet:   660f9511...
+    LLM:      openai (gpt-4)
+    Strategy: Buy low, sell high on SOL/USDC...
+    Created:  2024-01-15T10:30:00Z
+
+  hodl-agent (770fabc2...)
+    Status:   stopped
+    Wallet:   880fdef3...
+    LLM:      anthropic (claude-3-5-sonnet-20241022)
+    Strategy: Hold SOL and stake for passive income...
+    Created:  2024-01-16T08:15:00Z
+```
+
+---
+
+### Start Agent
+
+```bash
+karen agent start --name trader-bot
+```
+
+**Output:**
+```
+✅ Agent "trader-bot" started. It is now running autonomously.
+   Loop interval: 30000ms
+   Press Ctrl+C to stop.
+```
+
+The agent will:
+1. Check its wallet balance
+2. Analyze market conditions (simulated on devnet)
+3. Execute trades via Jupiter DEX
+4. Log all decisions and transactions
+5. Repeat every 30 seconds
+
+<Info>
+  Agents run in the foreground. Use `Ctrl+C` to stop, or run in a process manager like PM2 for production.
+</Info>
+
+---
+
+### Stop Agent
+
+```bash
+karen agent stop --name trader-bot
+```
+
+---
+
+### Chat with Agent
+
+Send a message to an agent and get a response.
+
+```bash
+karen agent chat \
+  --name trader-bot \
+  --message "What is your current balance?"
+```
+
+**Output:**
+```
+⏳ Talking to trader-bot...
+
+🤖 trader-bot:
+   I currently have 1.5 SOL and 100.50 USDC in my wallet.
+```
+
+---
+
+## Server Commands
+
+### Start REST API Server
+
+```bash
+karen server start --port 3001
+```
+
+**Options:**
+<ParamField path="--port, -p" type="number" default="3001">
+  Port number (can also set via `API_PORT` env var)
+</ParamField>
+
+**Output:**
+```
+╔═══════════════════════════════════════════╗
+║  ⚡ Karen — Autonomous Wallet Infrastructure  ║
+║     for Solana AI Agents                    ║  
+╚═══════════════════════════════════════════╝
+
+🚀 Karen API server running on http://localhost:3001
+   Health: http://localhost:3001/api/v1/health
+   Docs:   See SKILLS.md for API reference
+```
+
+Press `Ctrl+C` to stop.
+
+---
+
+### Start MCP Server
+
+Start the Model Context Protocol server for Claude Desktop / OpenClaw integration.
+
+```bash
+karen server mcp
+```
+
+**Output:**
+```
+Karen MCP server running on stdio
+```
+
+<Info>
+  The MCP server runs on stdio and is typically launched by the MCP client (Claude Desktop). See [MCP Server](/integration/mcp-server) for configuration.
+</Info>
+
+---
+
+## Transaction Commands
+
+### List Transactions
+
+View transaction history with optional wallet filter.
+
+```bash
+karen tx list --wallet my-wallet --limit 20
+```
+
+**Options:**
+<ParamField path="--wallet, -w" type="string">
+  Filter by wallet name (omit for all wallets)
+</ParamField>
+<ParamField path="--limit, -l" type="number" default="20">
+  Number of transactions to display
+</ParamField>
+
+**Output:**
+```
+📋 Transactions (5):
+
+  ✅ transfer_sol (tx-550e84...)
+     Wallet: 660f9511...
+     Tx: 5Kn8fGzXv...
+     Time: 2024-01-15T12:30:00Z
+
+  🛡️ transfer_sol (tx-770fabc...)
+     Wallet: 660f9511...
+     Error: Amount exceeds maxSolPerTransaction (2 SOL)
+     Time: 2024-01-15T12:25:00Z
+
+  ✅ swap (tx-880fdef...)
+     Wallet: 660f9511...
+     Tx: 3HnXdE4pM...
+     Time: 2024-01-15T12:20:00Z
+```
+
+---
+
+## Info Command
+
+Display Karen system information and health.
+
+```bash
+karen info
+```
+
+**Output:**
+```
+╔═══════════════════════════════════════════╗
+║  ⚡ Karen — Autonomous Wallet Infrastructure  ║
+║     for Solana AI Agents                    ║  
+╚═══════════════════════════════════════════╝
+
+  System Info:
+
+    Solana:    Connected (devnet)
+    Slot:      123456789
+    Wallets:   3
+    Agents:    2
+```
+
+---
+
+## Environment Variables
+
+Karen reads configuration from `.env`:
+
+```bash .env
+# Required
+KEYSTORE_PASSWORD=your-secure-password
+
+# Network (default: devnet)
+SOLANA_NETWORK=devnet  # or mainnet-beta
+SOLANA_RPC_URL=https://api.devnet.solana.com
+
+# API Server (optional)
+API_PORT=3001
+API_SECRET=your-admin-secret
+
+# LLM Providers (required for agents)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GROK_API_KEY=xai-...
+GEMINI_API_KEY=...
+
+# Telegram (optional)
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+```
+
+---
+
+## Tips & Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Keystore location">
+    By default, encrypted keystores are stored at `~/.karen/keystore.enc`
+
+    To use a custom location:
+    ```bash
+    export KAREN_KEYSTORE_PATH=/custom/path/keystore.enc
+    ```
+  </Accordion>
+
+  <Accordion title="Reset/delete wallets">
+    Wallets are stored in the encrypted keystore. To reset:
+    ```bash
+    rm ~/.karen/keystore.enc
+    ```
+
+    **Warning:** This deletes all wallets. Export private keys first if you need to recover funds.
+  </Accordion>
+
+  <Accordion title="Change keystore password">
+    Currently not supported. To change password:
+    1. Export all wallet private keys
+    2. Delete keystore
+    3. Recreate wallets with new password
+    4. Import private keys
+  </Accordion>
+
+  <Accordion title="Network switching">
+    To switch between devnet and mainnet:
+    ```bash .env
+    SOLANA_NETWORK=mainnet-beta
+    SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+    ```
+
+    **Warning:** Mainnet requires real SOL. Start on devnet for testing.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST API" icon="server" href="/integration/rest-api">
+    Integrate Karen via HTTP endpoints
+  </Card>
+  <Card title="TypeScript SDK" icon="code" href="/integration/sdk">
+    Use Karen as a library
+  </Card>
+  <Card title="MCP Server" icon="plug" href="/integration/mcp-server">
+    Integrate with Claude Desktop
+  </Card>
+  <Card title="Build Agents" icon="robot" href="/core-concepts/agents">
+    Create autonomous AI agents
+  </Card>
+</CardGroup>

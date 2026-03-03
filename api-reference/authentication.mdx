@@ -1,0 +1,299 @@
+---
+title: 'Authentication'
+description: 'Secure your API requests with API keys and admin secrets'
+---
+
+## Overview
+
+Karen uses Bearer token authentication for all API requests. There are two types of authentication:
+
+1. **API Keys** - For standard wallet and transaction operations
+2. **Admin Secret** - For administrative operations (key management, agent creation)
+
+---
+
+## API Keys
+
+API keys provide scoped access to wallet and transaction endpoints.
+
+### Authentication Header
+
+Include your API key in the Authorization header:
+
+```bash
+Authorization: Bearer YOUR_API_KEY
+```
+
+### Example Request
+
+```bash cURL
+curl https://api.karen.dev/api/v1/wallets \
+  -H "Authorization: Bearer sk-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+```
+
+### API Key Format
+
+API keys have the format: `sk-{32_character_hex}`
+
+Example: `sk-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6`
+
+---
+
+## Admin Secret
+
+The admin secret provides full access to all endpoints, including administrative operations.
+
+### Setup
+
+Set the admin secret via environment variable:
+
+```bash
+API_SECRET=your-secure-admin-secret
+```
+
+Default value (dev only): `karen-dev-secret`
+
+<Warning>
+Always use a strong, randomly generated secret in production. Never commit secrets to version control.
+</Warning>
+
+### Usage
+
+Include the admin secret in the Authorization header:
+
+```bash
+Authorization: Bearer your-secure-admin-secret
+```
+
+### Example Request
+
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/keys \
+  -H "Authorization: Bearer your-secure-admin-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "production-key",
+    "permissions": ["read", "write"],
+    "rateLimit": 10,
+    "spendingLimitSol": 5
+  }'
+```
+
+---
+
+## Create API Key
+
+<Warning>Requires admin authentication</Warning>
+
+Generate a new API key with custom permissions and limits.
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/keys \
+  -H "Authorization: Bearer ADMIN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-trading-bot",
+    "permissions": ["read", "write"],
+    "rateLimit": 10,
+    "spendingLimitSol": 5
+  }'
+```
+</RequestExample>
+
+<ParamField body="name" type="string" required>
+  Human-readable name for the API key
+</ParamField>
+
+<ParamField body="permissions" type="array" default='["read", "write"]'>
+  Array of permission strings
+</ParamField>
+
+<ParamField body="rateLimit" type="number" default="10">
+  Maximum transactions per minute
+</ParamField>
+
+<ParamField body="spendingLimitSol" type="number" default="5">
+  Daily spending limit in SOL
+</ParamField>
+
+<ResponseField name="apiKey" type="string">
+  The generated API key (store securely - cannot be retrieved later)
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  API key record ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The key name
+</ResponseField>
+
+---
+
+## List API Keys
+
+<Warning>Requires admin authentication</Warning>
+
+Retrieve all API keys (excluding the actual key values).
+
+<RequestExample>
+```bash cURL
+curl https://api.karen.dev/api/v1/keys \
+  -H "Authorization: Bearer ADMIN_SECRET"
+```
+</RequestExample>
+
+<ResponseField name="keys" type="array">
+  Array of API key records
+  <Expandable title="Key object">
+    <ResponseField name="id" type="string">
+      Key record ID
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Key name
+    </ResponseField>
+    <ResponseField name="walletId" type="string">
+      Associated wallet ID
+    </ResponseField>
+    <ResponseField name="permissions" type="array">
+      Permissions granted to this key
+    </ResponseField>
+    <ResponseField name="createdAt" type="string">
+      ISO 8601 creation timestamp
+    </ResponseField>
+    <ResponseField name="lastUsedAt" type="string">
+      ISO 8601 timestamp of last use
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Endpoint Authorization
+
+### API Key Endpoints
+
+These endpoints accept API keys or admin secret:
+
+- `POST /api/v1/wallets`
+- `GET /api/v1/wallets`
+- `GET /api/v1/wallets/:id/balance`
+- `POST /api/v1/wallets/:id/transfer`
+- `POST /api/v1/wallets/:id/swap`
+- `POST /api/v1/wallets/:id/airdrop`
+- `POST /api/v1/wallets/:id/launch-token`
+- `POST /api/v1/wallets/:id/mint-supply`
+- `POST /api/v1/wallets/:id/revoke-authority`
+- `POST /api/v1/wallets/:id/stake`
+- `POST /api/v1/wallets/:id/unstake`
+- `POST /api/v1/wallets/:id/withdraw-stake`
+- `GET /api/v1/wallets/:id/stakes`
+- `POST /api/v1/wallets/:id/burn`
+- `POST /api/v1/wallets/:id/close-account`
+- `POST /api/v1/wallets/:id/wrap-sol`
+- `POST /api/v1/wallets/:id/unwrap-sol`
+- `GET /api/v1/wallets/:id/transactions`
+- `GET /api/v1/transactions`
+- `GET /api/v1/agents`
+- `POST /api/v1/agents/:id/chat`
+
+### Admin-Only Endpoints
+
+These endpoints require admin secret:
+
+- `POST /api/v1/keys`
+- `GET /api/v1/keys`
+- `POST /api/v1/agents`
+- `POST /api/v1/agents/:id/start`
+- `POST /api/v1/agents/:id/stop`
+
+### Public Endpoints
+
+These endpoints do not require authentication:
+
+- `GET /api/v1/health`
+
+---
+
+## Error Responses
+
+### 401 Unauthorized - Missing API Key
+
+```json
+{
+  "error": "Unauthorized — API key required"
+}
+```
+
+### 401 Unauthorized - Invalid API Key
+
+```json
+{
+  "error": "Invalid API key"
+}
+```
+
+### 401 Unauthorized - Admin Secret Required
+
+```json
+{
+  "error": "Unauthorized — admin API secret required"
+}
+```
+
+---
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Store Securely" icon="lock">
+    Never hardcode API keys in source code. Use environment variables or secret management services.
+  </Card>
+  <Card title="Rotate Regularly" icon="rotate">
+    Generate new API keys periodically and revoke old ones.
+  </Card>
+  <Card title="Scope Permissions" icon="shield">
+    Create separate keys with minimal permissions for different use cases.
+  </Card>
+  <Card title="Monitor Usage" icon="chart-line">
+    Track API key usage via lastUsedAt timestamps to detect anomalies.
+  </Card>
+</CardGroup>
+
+---
+
+## Example: Full Setup
+
+```bash
+# 1. Set admin secret (server startup)
+export API_SECRET="your-secure-random-secret-here"
+
+# 2. Start Karen server
+npm start
+
+# 3. Create an API key
+curl -X POST http://localhost:3001/api/v1/keys \
+  -H "Authorization: Bearer your-secure-random-secret-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-bot",
+    "rateLimit": 20,
+    "spendingLimitSol": 10
+  }'
+
+# Response:
+# {
+#   "apiKey": "sk-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+#   "id": "key_xyz",
+#   "name": "my-bot"
+# }
+
+# 4. Use the API key
+export KAREN_API_KEY="sk-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+
+curl -X POST http://localhost:3001/api/v1/wallets \
+  -H "Authorization: Bearer $KAREN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-wallet"}'
+```

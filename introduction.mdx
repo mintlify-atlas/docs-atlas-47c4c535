@@ -1,0 +1,257 @@
+---
+title: Introduction
+description: Autonomous wallet infrastructure for Solana AI agents - OpenClaw-inspired runtime with LLM-powered decision making, secure keystores, and DeFi integration
+---
+
+<img
+  src="/images/karen-hero.png"
+  alt="Karen - Autonomous Wallet Infrastructure"
+  className="rounded-lg"
+/>
+
+# ⚡ Karen
+
+**Autonomous Wallet Infrastructure for Solana AI Agents**
+
+Karen is an open-source, OpenClaw-inspired agentic wallet runtime where AI agents autonomously manage Solana wallets, sign transactions, and interact with DeFi protocols. It also serves as **infrastructure** — any external AI agent can plug in via REST API or MCP.
+
+## Why Karen?
+
+Karen bridges the gap between AI agents and blockchain by providing:
+
+<CardGroup cols={2}>
+  <Card title="Autonomous Operation" icon="robot">
+    LLM-powered agents that observe wallet state, reason about decisions, and execute transactions autonomously using pluggable skills
+  </Card>
+  <Card title="Secure by Design" icon="shield-halved">
+    AES-256-GCM encrypted keystores with HD derivation, per-agent spending limits, rate limiting, and program allowlists
+  </Card>
+  <Card title="DeFi Native" icon="coins">
+    Built-in Jupiter swaps, native SOL staking, SPL token launches, wSOL wrapping, and token management
+  </Card>
+  <Card title="Universal Integration" icon="plug">
+    REST API and MCP server let any external AI agent (Claude, OpenClaw, LangChain) access wallet capabilities
+  </Card>
+</CardGroup>
+
+## Architecture
+
+Karen uses a three-layer architecture that separates agent intelligence, core wallet operations, and blockchain interactions:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│         External Agents (OpenClaw, LangChain)           │
+└───────────────────┬─────────────────────────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        │     MCP Server        │──── REST API (Port 3001)
+        │  17 Wallet Tools      │
+        └───────────┬───────────┘
+                    │
+        ┌───────────┴───────────────────────────┐
+        │       Agent Runtime                   │
+        │  Observe → Think → Act → Remember     │
+        │  • OpenAI / Claude / Grok / Gemini    │
+        │  • 17 Pluggable Skills                │
+        │  • Persistent Memory                  │
+        └───────────┬───────────────────────────┘
+                    │
+        ┌───────────┴───────────────────────────┐
+        │         Core Engine                   │
+        │  • Wallet Manager (HD Derivation)     │
+        │  • Transaction Engine                 │
+        │  • Security Guardrails                │
+        │  • Encrypted Keystores (AES-256-GCM)  │
+        └───────────┬───────────────────────────┘
+                    │
+        ┌───────────┴───────────────────────────┐
+        │      Protocol Adapters                │
+        │  Jupiter • SPL Token • Staking        │
+        │  Token Launcher • Wrapped SOL         │
+        └───────────┬───────────────────────────┘
+                    │
+            Solana Devnet RPC
+```
+
+## Key Features
+
+### 🤖 Autonomous Agents
+
+LLM-powered agents (OpenAI, Claude, Grok, Gemini) that follow a continuous observe-think-act loop:
+
+- **Observe**: Check wallet balances, recent transactions, and on-chain state
+- **Think**: LLM reasons about strategy and selects the best action
+- **Act**: Execute one of 17 pluggable skills (swap, transfer, stake, etc.)
+- **Remember**: Persist decisions in memory for learning over time
+
+Agents operate autonomously with configurable loop intervals (default: 30 seconds).
+
+### 🔐 Secure Wallets
+
+- **AES-256-GCM encryption**: Private keys encrypted with scrypt-derived keys
+- **HD derivation**: BIP-44 compatible hierarchical deterministic wallets
+- **Multi-agent support**: Each agent gets its own derived wallet from a master seed
+- **Keystore isolation**: Encrypted keystores stored separately from application code
+
+### 💱 DeFi Integration
+
+- **Jupiter DEX**: Automated token swaps with slippage protection
+- **Native staking**: Delegate SOL to validators, manage stake accounts
+- **SPL token lifecycle**: Create tokens, mint supply, revoke authorities
+- **Token management**: Burn tokens, close accounts, freeze/thaw
+- **wSOL wrapping**: Convert between SOL and Wrapped SOL
+
+All operations work on Solana devnet for safe testing.
+
+### 🛡️ Security Guardrails
+
+Every transaction passes through configurable safety checks:
+
+| Guardrail | Default | Purpose |
+|-----------|---------|----------|
+| `maxSolPerTransaction` | 2 SOL | Limit per-transaction spend |
+| `maxTransactionsPerMinute` | 5 | Rate limiting |
+| `dailySpendingLimitSol` | 10 SOL | Daily spending cap |
+| `allowedPrograms` | System, Token, Jupiter, Stake | Whitelist programs |
+| `blockedAddresses` | `[]` | Blacklist addresses |
+
+Blocked transactions are logged with reason and never executed.
+
+### 🔌 Universal Integration
+
+**REST API** (Port 3001): HTTP endpoints for wallet creation, balance checks, swaps, transfers, staking, and more.
+
+**MCP Server**: Model Context Protocol integration provides 17 tools that any MCP-compatible agent can use:
+
+- `karen_create_wallet`, `karen_balance`, `karen_swap`
+- `karen_transfer`, `karen_airdrop`, `karen_stake`
+- `karen_launch_token`, `karen_mint_supply`, `karen_burn`
+- And 8 more DeFi operations
+
+### 🧠 Agent Skills (17 Total)
+
+**Core Skills:**
+- `check_balance` - View SOL and SPL token holdings
+- `swap` - Trade tokens via Jupiter DEX
+- `transfer` - Send SOL to addresses
+- `airdrop` - Request devnet SOL
+- `token_info` - Look up token metadata
+- `wait` - Skip action this cycle
+
+**Token Lifecycle:**
+- `launch_token` - Create new SPL token
+- `mint_supply` - Mint additional tokens
+- `revoke_mint_authority` - Permanently disable minting
+
+**Staking:**
+- `stake_sol` - Delegate to validator
+- `unstake_sol` - Deactivate stake account
+- `withdraw_stake` - Withdraw deactivated stake
+- `list_stakes` - View all stake accounts
+
+**Token Management:**
+- `burn_tokens` - Destroy tokens
+- `close_token_account` - Reclaim rent SOL
+- `wrap_sol` - Convert SOL to wSOL
+- `unwrap_sol` - Convert wSOL to SOL
+
+### 💾 Agent Memory
+
+Agents maintain persistent memory of past decisions:
+
+```typescript
+// src/agent/runtime.ts:214
+this.memory.addMemory(this.config.id, {
+  cycle: this.cycle,
+  reasoning,
+  action: action
+    ? `${action.skill}(${JSON.stringify(action.params)})`
+    : null,
+  outcome,
+  timestamp: new Date().toISOString(),
+})
+```
+
+Memory is included in future LLM prompts so agents learn from experience.
+
+### 📊 Dashboard & CLI
+
+- **CLI**: Full-featured terminal interface for wallet/agent management
+- **Dashboard**: Premium Next.js UI for live monitoring (optional)
+- **Telegram Bot**: Control agents via Telegram (optional)
+
+## Supported LLM Providers
+
+| Provider | Models |
+|----------|--------|
+| **OpenAI** | gpt-4o, gpt-4o-mini, gpt-3.5-turbo |
+| **Anthropic** | claude-sonnet-4-20250514, claude-3-haiku |
+| **xAI** | grok-3-latest |
+| **Google** | gemini-2.0-flash |
+
+Configured via environment variables. At least one API key required.
+
+## Project Structure
+
+```
+karen/
+├── src/
+│   ├── core/                 # Wallet, transactions, guardrails
+│   │   ├── wallet/           # Wallet manager, HD derivation, keystores
+│   │   ├── transaction/      # Transaction engine, guardrails
+│   │   └── solana/           # RPC connection
+│   ├── agent/                # LLM-powered agent runtime
+│   │   ├── llm/              # OpenAI, Anthropic, Grok, Gemini providers
+│   │   ├── skills/           # 17 pluggable agent skills
+│   │   ├── memory/           # Persistent agent memory
+│   │   ├── orchestrator.ts   # Multi-agent management
+│   │   └── runtime.ts        # Observe-think-act loop
+│   ├── protocols/            # DeFi integration
+│   │   ├── jupiter.ts        # DEX swaps
+│   │   ├── spl-token.ts      # Token operations
+│   │   ├── staking.ts        # Native SOL staking
+│   │   ├── token-launcher.ts # Token creation
+│   │   └── wrapped-sol.ts    # wSOL wrapping
+│   ├── api/                  # REST API server
+│   ├── mcp/                  # MCP server
+│   └── cli/                  # CLI interface
+├── dashboard/                # Next.js monitoring dashboard
+├── data/                     # Runtime data (keystores, logs, memory)
+├── SKILLS.md                 # Agent skill reference
+└── .env.example              # Configuration template
+```
+
+## Security Model
+
+Karen implements defense-in-depth security:
+
+1. **Encrypted keystores**: AES-256-GCM encryption with scrypt key derivation (N=16384, r=8, p=1)
+2. **HD wallets**: BIP-44 derivation path `m/44'/501'/0'/0'` for Solana
+3. **Spending limits**: Per-transaction, per-minute, and daily caps enforced before signing
+4. **Program allowlists**: Only whitelisted Solana programs (System, Token, Jupiter, Stake, Metadata)
+5. **Audit logging**: Every transaction and decision logged with timestamp
+6. **Devnet only**: Designed for safe testing without real funds
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get from zero to running agent in 5 minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Prerequisites, dependencies, and environment setup
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/wallets">
+    REST API and MCP tool documentation
+  </Card>
+  <Card title="Agent Skills" icon="brain" href="/skills/overview">
+    Complete reference for all 17 agent skills
+  </Card>
+</CardGroup>
+
+## Community & Support
+
+- **GitHub**: [github.com/yourusername/karen](https://github.com/yourusername/karen)
+- **Issues**: Report bugs and request features
+- **Discussions**: Ask questions and share strategies
+- **License**: MIT - free for commercial and personal use

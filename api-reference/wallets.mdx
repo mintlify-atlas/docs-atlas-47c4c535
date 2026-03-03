@@ -1,0 +1,489 @@
+---
+title: 'Wallet Management'
+description: 'Create and manage Solana wallets programmatically'
+---
+
+## Create Wallet
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-agent-wallet"}'
+```
+</RequestExample>
+
+<ParamField body="name" type="string" default="external-wallet">
+  Optional human-readable name for the wallet
+</ParamField>
+
+<ResponseField name="walletId" type="string">
+  Unique identifier for the wallet
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The wallet name
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Solana public key (base58 encoded)
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp of wallet creation
+</ResponseField>
+
+---
+
+## List Wallets
+
+<RequestExample>
+```bash cURL
+curl https://api.karen.dev/api/v1/wallets \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseField name="wallets" type="array">
+  Array of wallet objects with id, name, publicKey, createdAt, and tags
+</ResponseField>
+
+---
+
+## Get Balance
+
+<RequestExample>
+```bash cURL
+curl https://api.karen.dev/api/v1/wallets/WALLET_ID/balance \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseField name="sol" type="number">
+  Native SOL balance
+</ResponseField>
+
+<ResponseField name="tokens" type="array">
+  Array of SPL token balances
+  <Expandable title="Token balance object">
+    <ResponseField name="mint" type="string">
+      Token mint address
+    </ResponseField>
+    <ResponseField name="symbol" type="string">
+      Token symbol (if available)
+    </ResponseField>
+    <ResponseField name="balance" type="number">
+      Raw balance (smallest unit)
+    </ResponseField>
+    <ResponseField name="decimals" type="number">
+      Token decimal places
+    </ResponseField>
+    <ResponseField name="uiBalance" type="number">
+      Human-readable balance
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Transfer SOL
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/transfer \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "RECIPIENT_ADDRESS",
+    "amount": 0.5
+  }'
+```
+</RequestExample>
+
+<ParamField body="to" type="string" required>
+  Recipient's Solana address
+</ParamField>
+
+<ParamField body="amount" type="number" required>
+  Amount in SOL to transfer
+</ParamField>
+
+<ResponseField name="id" type="string">
+  Transaction record ID
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Solana transaction signature
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Transaction status: pending, confirmed, failed, or blocked
+</ResponseField>
+
+---
+
+## Swap Tokens
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/swap \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputToken": "So11111111111111111111111111111111111111112",
+    "outputToken": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "amount": 1.0,
+    "slippageBps": 50
+  }'
+```
+</RequestExample>
+
+<ParamField body="inputToken" type="string" required>
+  Input token mint address
+</ParamField>
+
+<ParamField body="outputToken" type="string" required>
+  Output token mint address
+</ParamField>
+
+<ParamField body="amount" type="number" required>
+  Input token amount
+</ParamField>
+
+<ParamField body="slippageBps" type="number" default="50">
+  Slippage tolerance in basis points (50 = 0.5%)
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="inputAmount" type="number">
+  Amount of input tokens used
+</ResponseField>
+
+<ResponseField name="outputAmount" type="number">
+  Amount of output tokens received
+</ResponseField>
+
+---
+
+## Request Airdrop
+
+<Info>Only available on devnet/testnet for testing purposes</Info>
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/airdrop \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 1}'
+```
+</RequestExample>
+
+<ParamField body="amount" type="number" default="1">
+  SOL amount to airdrop (max 2 SOL)
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Transaction status
+</ResponseField>
+
+---
+
+## Launch Token
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/launch-token \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Token",
+    "symbol": "MTK",
+    "decimals": 9,
+    "initialSupply": 1000000
+  }'
+```
+</RequestExample>
+
+<ParamField body="name" type="string" required>
+  Token name
+</ParamField>
+
+<ParamField body="symbol" type="string" required>
+  Token symbol
+</ParamField>
+
+<ParamField body="decimals" type="number" default="9">
+  Token decimal places
+</ParamField>
+
+<ParamField body="initialSupply" type="number" default="1000000">
+  Initial token supply
+</ParamField>
+
+<ResponseField name="mint" type="string">
+  Token mint address
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+---
+
+## Mint Additional Supply
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/mint-supply \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mint": "TOKEN_MINT_ADDRESS",
+    "amount": 50000,
+    "decimals": 9
+  }'
+```
+</RequestExample>
+
+<ParamField body="mint" type="string" required>
+  Token mint address
+</ParamField>
+
+<ParamField body="amount" type="number" required>
+  Amount of tokens to mint
+</ParamField>
+
+<ParamField body="decimals" type="number" default="9">
+  Token decimals
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+---
+
+## Revoke Authority
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/revoke-authority \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mint": "TOKEN_MINT_ADDRESS",
+    "authorityType": "mint"
+  }'
+```
+</RequestExample>
+
+<ParamField body="mint" type="string" required>
+  Token mint address
+</ParamField>
+
+<ParamField body="authorityType" type="string" default="mint">
+  Authority type to revoke: "mint" or "freeze"
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="authorityType" type="string">
+  Authority type that was revoked
+</ResponseField>
+
+<ResponseField name="revoked" type="boolean">
+  Confirmation that authority was revoked
+</ResponseField>
+
+---
+
+## Stake SOL
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/stake \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 5.0,
+    "validator": "VALIDATOR_ADDRESS"
+  }'
+```
+</RequestExample>
+
+<ParamField body="amount" type="number" required>
+  Amount of SOL to stake
+</ParamField>
+
+<ParamField body="validator" type="string">
+  Optional validator address (uses default if not specified)
+</ParamField>
+
+<ResponseField name="stakeAccount" type="string">
+  Created stake account address
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+---
+
+## Unstake SOL
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/unstake \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"stakeAccount": "STAKE_ACCOUNT_ADDRESS"}'
+```
+</RequestExample>
+
+<ParamField body="stakeAccount" type="string" required>
+  Stake account address to deactivate
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="deactivated" type="boolean">
+  Confirmation that stake was deactivated
+</ResponseField>
+
+---
+
+## Withdraw Stake
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/withdraw-stake \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"stakeAccount": "STAKE_ACCOUNT_ADDRESS"}'
+```
+</RequestExample>
+
+<ParamField body="stakeAccount" type="string" required>
+  Stake account address to withdraw from
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="withdrawn" type="boolean">
+  Confirmation that stake was withdrawn
+</ResponseField>
+
+---
+
+## List Stake Accounts
+
+<RequestExample>
+```bash cURL
+curl https://api.karen.dev/api/v1/wallets/WALLET_ID/stakes \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseField name="stakes" type="array">
+  Array of stake account objects with address, balance, and state
+</ResponseField>
+
+---
+
+## Burn Tokens
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/burn \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mint": "TOKEN_MINT_ADDRESS",
+    "amount": 1000
+  }'
+```
+</RequestExample>
+
+<ParamField body="mint" type="string" required>
+  Token mint address
+</ParamField>
+
+<ParamField body="amount" type="number" required>
+  Amount of tokens to burn
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+---
+
+## Close Token Account
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/close-account \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"mint": "TOKEN_MINT_ADDRESS"}'
+```
+</RequestExample>
+
+<ParamField body="mint" type="string" required>
+  Token mint address for account to close
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+---
+
+## Wrap SOL
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/wrap-sol \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 1.0}'
+```
+</RequestExample>
+
+<ParamField body="amount" type="number" required>
+  Amount of SOL to wrap into wSOL
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+---
+
+## Unwrap SOL
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/wallets/WALLET_ID/unwrap-sol \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"
+```
+</RequestExample>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>

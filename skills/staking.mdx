@@ -1,0 +1,439 @@
+---
+title: 'SOL Staking'
+description: 'Stake SOL to validators, manage delegations, and earn staking rewards'
+---
+
+## Overview
+
+Staking skills enable agents to participate in Solana's proof-of-stake consensus mechanism. By staking SOL to validators, agents can earn rewards while helping secure the network.
+
+## How Solana Staking Works
+
+Solana staking involves several key concepts:
+
+### Stake Accounts
+
+- **Separate accounts:** Staked SOL is held in dedicated stake accounts (not your wallet)
+- **Rent-exempt:** Each stake account requires ~0.002 SOL rent
+- **Delegatable:** Stake accounts delegate to validator vote accounts
+
+### Validator Delegation
+
+- **Vote accounts:** Validators have vote accounts that accept delegations
+- **Commission:** Validators charge commission (e.g., 10% of rewards)
+- **Performance:** Rewards depend on validator uptime and performance
+
+### Epochs and Timing
+
+- **Epoch:** Solana's time unit (~2-3 days on mainnet, faster on devnet)
+- **Activation:** Staking takes effect at the next epoch boundary
+- **Deactivation:** Unstaking also takes one epoch to complete
+- **Warmup/Cooldown:** New stakes warm up gradually, deactivations cool down
+
+---
+
+## stake_sol
+
+Stake SOL by creating a stake account and delegating it to a validator.
+
+### Parameters
+
+<ParamField path="amount" type="number" required>
+  Amount of SOL to stake (e.g., 1.0 for one SOL).
+</ParamField>
+
+<ParamField path="validator" type="string">
+  Validator vote account address. If not provided, Karen uses a default reliable devnet validator.
+</ParamField>
+
+### What Happens
+
+1. Creates a new stake account
+2. Transfers SOL from your wallet to the stake account
+3. Delegates the stake account to the validator
+4. Activation begins at next epoch boundary
+
+### Example Invocation: Default Validator
+
+```json
+{
+  "skill": "stake_sol",
+  "params": {
+    "amount": 1.0
+  }
+}
+```
+
+### Example Response
+
+```
+Staked 1.0 SOL successfully!
+Stake Account: 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i
+Validator: 8K7wCR2g5QL3...devnet_validator
+Note: Stake activation takes 1-2 epochs on devnet.
+Transaction: 3KL8nQ2...signature
+```
+
+### Example Invocation: Specific Validator
+
+```json
+{
+  "skill": "stake_sol",
+  "params": {
+    "amount": 5.0,
+    "validator": "8K7wCR2g5QL3pD9vT2nF6mE1jH4sL7qR9xY3cW5kN8aZ"
+  }
+}
+```
+
+<Info>
+**Activation Timing:** Your stake becomes active at the next epoch boundary. On devnet this is usually within hours; on mainnet it can take 2-3 days.
+</Info>
+
+<Tip>
+**Choosing Validators:** Consider:
+- **Uptime:** High uptime (>95%) validators earn more rewards
+- **Commission:** Lower commission = more rewards for you
+- **Stake concentration:** Delegating to smaller validators helps decentralization
+</Tip>
+
+---
+
+## list_stakes
+
+List all your stake accounts with their status, balances, and delegations.
+
+### Parameters
+
+This skill requires no parameters.
+
+### Returns
+
+For each stake account:
+- Account address
+- SOL balance
+- State (activating, active, deactivating, inactive)
+- Delegated validator (if any)
+
+### Example Invocation
+
+```json
+{
+  "skill": "list_stakes",
+  "params": {}
+}
+```
+
+### Example Response: Multiple Stakes
+
+```
+Found 3 stake account(s):
+
+  Address: 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i
+  Balance: 1.0000 SOL
+  State: active
+  Validator: 8K7wCR2g5QL3pD9vT2nF6mE1jH4sL7qR9xY3cW5kN8aZ
+
+  Address: 7yL3kP8wT5nM4rE9vF2aD6cH1gS8qZ5xN7jW4kR2mT9v
+  Balance: 5.0000 SOL
+  State: activating
+  Validator: 9MN4sL7qR8xP2wF6vE3kD5cH9gT7yZ4aN8jW2kL5rT6v
+
+  Address: 3bC9fT4wL8nM2rE5vP7aD1cH6gS4qZ9xN2jW8kR5mT7v
+  Balance: 2.0000 SOL
+  State: deactivating
+  Validator: N/A
+```
+
+### Example Response: No Stakes
+
+```
+No stake accounts found.
+```
+
+<Note>
+**Stake States:**
+- **inactive:** Stake account created but not delegated
+- **activating:** Delegation submitted, waiting for epoch boundary
+- **active:** Fully active and earning rewards
+- **deactivating:** Unstake initiated, waiting for cooldown
+</Note>
+
+---
+
+## unstake_sol
+
+Deactivate a stake account. After deactivation completes (1 epoch), you can withdraw the SOL.
+
+### Parameters
+
+<ParamField path="stakeAccount" type="string" required>
+  Public key of the stake account to deactivate. Get this from `list_stakes`.
+</ParamField>
+
+### What Happens
+
+1. Initiates deactivation of the stake account
+2. Deactivation takes effect at next epoch boundary
+3. After deactivation completes, SOL can be withdrawn
+
+### Example Invocation
+
+```json
+{
+  "skill": "unstake_sol",
+  "params": {
+    "stakeAccount": "5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i"
+  }
+}
+```
+
+### Example Response
+
+```
+Stake account 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i deactivation initiated.
+Withdrawal will be available after the current epoch ends.
+Transaction: 4YT9pL6...signature
+```
+
+<Warning>
+**Cooldown Period:** You cannot withdraw immediately after unstaking. You must wait for the current epoch to end (1 epoch on devnet, 2-3 days on mainnet).
+</Warning>
+
+---
+
+## withdraw_stake
+
+Withdraw SOL from a fully deactivated stake account back to your wallet.
+
+### Parameters
+
+<ParamField path="stakeAccount" type="string" required>
+  Public key of the deactivated stake account. Must be in "inactive" state.
+</ParamField>
+
+### Requirements
+
+<Warning>
+The stake account must be **fully deactivated** (state: "inactive"). Check with `list_stakes` before attempting withdrawal.
+</Warning>
+
+### Example Invocation
+
+```json
+{
+  "skill": "withdraw_stake",
+  "params": {
+    "stakeAccount": "5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i"
+  }
+}
+```
+
+### Example Response
+
+```
+Successfully withdrew stake from 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i.
+SOL returned to your wallet.
+Transaction: 6PQ2wK7...signature
+```
+
+<Info>
+**Rent Reclamation:** Withdrawing closes the stake account and reclaims the rent-exempt balance (~0.002 SOL).
+</Info>
+
+---
+
+## Complete Staking Lifecycle Example
+
+### Scenario: Agent stakes SOL, waits for activation, then unstakes and withdraws
+
+#### Cycle 1: Check Initial Balance
+```json
+{"skill": "check_balance", "params": {}}
+```
+**Response:** `SOL: 10.0000 SOL`
+
+#### Cycle 2: Stake 5 SOL
+```json
+{
+  "skill": "stake_sol",
+  "params": {
+    "amount": 5.0
+  }
+}
+```
+**Response:**
+```
+Staked 5.0 SOL successfully!
+Stake Account: 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i
+Validator: 8K7wCR2g5QL3pD9vT2nF6mE1jH4sL7qR9xY3cW5kN8aZ
+```
+
+#### Cycle 3: List Stakes (Activating State)
+```json
+{"skill": "list_stakes", "params": {}}
+```
+**Response:**
+```
+Found 1 stake account(s):
+
+  Address: 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i
+  Balance: 5.0000 SOL
+  State: activating
+  Validator: 8K7wCR2g5QL3pD9vT2nF6mE1jH4sL7qR9xY3cW5kN8aZ
+```
+
+#### Cycle 4: Wait for Epoch (After 1+ Epoch)
+```json
+{"skill": "list_stakes", "params": {}}
+```
+**Response:**
+```
+Found 1 stake account(s):
+
+  Address: 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i
+  Balance: 5.0021 SOL  # Earned ~0.0021 SOL rewards
+  State: active
+  Validator: 8K7wCR2g5QL3pD9vT2nF6mE1jH4sL7qR9xY3cW5kN8aZ
+```
+
+#### Cycle 5: Unstake
+```json
+{
+  "skill": "unstake_sol",
+  "params": {
+    "stakeAccount": "5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i"
+  }
+}
+```
+**Response:** `Stake account deactivation initiated.`
+
+#### Cycle 6: Wait for Deactivation
+```json
+{
+  "skill": "wait",
+  "params": {
+    "reason": "Waiting for stake deactivation to complete before withdrawal"
+  }
+}
+```
+
+#### Cycle 7: Check Status (After 1+ Epoch)
+```json
+{"skill": "list_stakes", "params": {}}
+```
+**Response:**
+```
+Address: 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i
+Balance: 5.0021 SOL
+State: inactive
+Validator: N/A
+```
+
+#### Cycle 8: Withdraw
+```json
+{
+  "skill": "withdraw_stake",
+  "params": {
+    "stakeAccount": "5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i"
+  }
+}
+```
+**Response:** `Successfully withdrew stake. SOL returned to your wallet.`
+
+#### Cycle 9: Verify Final Balance
+```json
+{"skill": "check_balance", "params": {}}
+```
+**Response:** `SOL: 10.0019 SOL` (Net gain: 0.0019 SOL after rent)
+
+---
+
+## Staking Strategies
+
+### Long-Term Staking (Passive Income)
+
+1. Stake significant SOL to high-performance validator
+2. Leave staked for multiple epochs
+3. Rewards compound automatically
+4. Withdraw periodically to realize gains
+
+### Validator Shopping
+
+1. Stake small amounts to multiple validators
+2. Monitor rewards over several epochs
+3. Consolidate to best-performing validator
+4. Balance rewards vs. decentralization
+
+### Liquid Staking Alternative
+
+<Note>
+Karen doesn't currently support liquid staking protocols (like Marinade or Lido), but these allow you to stake while maintaining liquidity through derivative tokens.
+</Note>
+
+---
+
+## Rewards and APY
+
+### Reward Factors
+
+Staking rewards depend on:
+
+1. **Validator commission:** Lower = more rewards for you
+2. **Validator performance:** Uptime and vote accuracy
+3. **Network inflation rate:** Solana's overall inflation schedule
+4. **Total staked:** Network-wide stake affects individual rewards
+
+### Typical APY
+
+- **Mainnet:** 5-8% APY (varies by validator and network conditions)
+- **Devnet:** Rewards are for testing only, not real value
+
+### Reward Distribution
+
+- **Automatic:** Rewards accrue directly to stake account balance
+- **Compound:** Rewards automatically compound (stake on stake)
+- **No claiming:** No manual claim required
+
+---
+
+## Error Handling
+
+### Common Staking Errors
+
+- **Insufficient balance:** Not enough SOL to stake (need amount + rent + fees)
+- **Invalid validator:** Validator vote account doesn't exist or isn't active
+- **Account not deactivated:** Can't withdraw from active/activating stake
+- **Already deactivating:** Stake is already in deactivation process
+
+### Recovery Strategies
+
+1. **Can't withdraw:** Check state with `list_stakes`, wait for full deactivation
+2. **Lost stake account address:** Use `list_stakes` to find all your stakes
+3. **Rewards seem low:** Check validator commission and performance
+
+---
+
+## Devnet vs Mainnet Differences
+
+| Aspect | Devnet | Mainnet |
+|--------|--------|--------|
+| Epoch duration | Minutes to hours | 2-3 days |
+| APY | Testing only | 5-8% real |
+| Validator reliability | Variable | Generally high |
+| Value | None (test SOL) | Real economic value |
+| Activation time | Very fast | 2-3 days |
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Wallet Operations" icon="wallet" href="/skills/wallet-operations">
+    Return to basic wallet operations
+  </Card>
+  
+  <Card title="DeFi Operations" icon="arrow-right-arrow-left" href="/skills/defi">
+    Learn about token swaps and DeFi
+  </Card>
+</CardGroup>

@@ -1,0 +1,192 @@
+---
+title: 'Agent Skills Overview'
+description: 'Learn how Karen agents execute blockchain operations using the skill system'
+---
+
+## What are Agent Skills?
+
+Agent skills are self-contained capabilities that allow Karen agents to interact with the Solana blockchain. Each skill represents a specific action—like checking balances, swapping tokens, or staking SOL—that an agent can invoke during its decision-making cycle.
+
+## Architecture
+
+The skill system is built on three core components:
+
+### 1. Skill Registry
+
+The `SkillRegistry` maintains all available skills and provides:
+- Skill registration and lookup
+- Conversion to LLM tool definitions
+- Centralized skill execution with error handling
+
+### 2. Skill Context
+
+Each skill execution receives a context containing:
+- **Wallet Manager**: Access to wallet keypairs and balances
+- **Transaction Engine**: Guardrail-protected transaction submission
+- **Protocol Adapters**: Jupiter (DEX), SPL Token, Staking, Token Launcher, Wrapped SOL
+
+### 3. Individual Skills
+
+Each skill is a TypeScript object implementing:
+```typescript
+interface Skill {
+  name: string
+  description: string
+  parameters: Record<string, any>  // JSON schema
+  execute(params, context): Promise<string>
+}
+```
+
+## Skill Invocation Rules
+
+Agents must follow these critical rules when using skills:
+
+<Warning>
+**ONE skill per cycle** — Agents can only invoke a single skill per decision loop. Plan carefully.
+</Warning>
+
+<Note>
+**Always include reasoning** — Explain why you're choosing this skill and these parameters.
+</Note>
+
+<Tip>
+**Check balance first** — Before making swaps or transfers, use `check_balance` to verify funds.
+</Tip>
+
+<Warning>
+**Respect spending limits** — All transactions pass through guardrails. Exceeding limits will block the transaction.
+</Warning>
+
+<Info>
+**When unsure, use `wait`** — It's better to skip a cycle than make a bad trade or transaction.
+</Info>
+
+## Available Skills (17 Total)
+
+Karen agents have access to 17 distinct skills across four categories:
+
+<CardGroup cols={2}>
+  <Card title="Wallet Operations" icon="wallet" href="/skills/wallet-operations">
+    Basic wallet management: balances, transfers, airdrops, and waiting
+  </Card>
+  
+  <Card title="DeFi Operations" icon="arrow-right-arrow-left" href="/skills/defi">
+    Token swaps via Jupiter, token info lookup, and SOL wrapping
+  </Card>
+  
+  <Card title="Token Management" icon="coins" href="/skills/token-management">
+    Create, mint, burn, and manage SPL tokens
+  </Card>
+  
+  <Card title="Staking" icon="layer-group" href="/skills/staking">
+    Stake SOL to validators, unstake, and manage delegations
+  </Card>
+</CardGroup>
+
+### Complete Skill List
+
+**Wallet Operations:**
+- `check_balance` — View SOL and SPL token balances
+- `transfer` — Send SOL to another address
+- `airdrop` — Request devnet SOL from faucet
+- `wait` — Skip this cycle with reasoning
+
+**DeFi Operations:**
+- `swap` — Exchange tokens via Jupiter DEX
+- `token_info` — Look up token metadata
+- `wrap_sol` — Convert SOL to wSOL
+- `unwrap_sol` — Convert wSOL back to SOL
+
+**Token Management:**
+- `launch_token` — Create a new SPL token
+- `mint_supply` — Mint additional tokens
+- `revoke_mint_authority` — Permanently disable minting
+- `burn_tokens` — Destroy tokens
+- `close_token_account` — Reclaim rent from empty accounts
+
+**Staking Operations:**
+- `stake_sol` — Delegate SOL to a validator
+- `unstake_sol` — Deactivate a stake account
+- `withdraw_stake` — Withdraw from deactivated stake
+- `list_stakes` — View all stake accounts
+
+## JSON Skill Invocation Format
+
+Agents invoke skills using structured JSON:
+
+```json
+{
+  "skill": "skill_name",
+  "params": {
+    "param1": "value1",
+    "param2": 123
+  }
+}
+```
+
+### Example: Checking Balance
+
+```json
+{
+  "skill": "check_balance",
+  "params": {}
+}
+```
+
+### Example: Swapping Tokens
+
+```json
+{
+  "skill": "swap",
+  "params": {
+    "inputToken": "SOL",
+    "outputToken": "USDC",
+    "amount": 0.5,
+    "slippageBps": 50
+  }
+}
+```
+
+### Example: Waiting
+
+```json
+{
+  "skill": "wait",
+  "params": {
+    "reason": "Waiting for token price to stabilize before executing swap"
+  }
+}
+```
+
+## Security Guardrails
+
+All skills that execute transactions pass through Karen's guardrail system:
+
+| Guardrail | Default | Description |
+|-----------|---------|-------------|
+| `maxSolPerTransaction` | 2 SOL | Maximum SOL per single transaction |
+| `maxTransactionsPerMinute` | 5 | Rate limiting for all transactions |
+| `dailySpendingLimitSol` | 10 SOL | Total daily spending cap |
+| `allowedPrograms` | System, Token, Jupiter | Only whitelisted programs allowed |
+
+Transactions that violate guardrails are immediately blocked and logged with status `blocked`.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Wallet Operations" icon="wallet" href="/skills/wallet-operations">
+    Learn about balance checks, transfers, and airdrops
+  </Card>
+  
+  <Card title="DeFi Operations" icon="arrow-right-arrow-left" href="/skills/defi">
+    Explore token swaps and Jupiter integration
+  </Card>
+  
+  <Card title="Token Management" icon="coins" href="/skills/token-management">
+    Create and manage your own SPL tokens
+  </Card>
+  
+  <Card title="Staking" icon="layer-group" href="/skills/staking">
+    Stake SOL and earn rewards from validators
+  </Card>
+</CardGroup>

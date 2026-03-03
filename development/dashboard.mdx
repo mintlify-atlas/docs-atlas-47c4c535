@@ -1,0 +1,406 @@
+---
+title: "Monitoring Dashboard"
+description: "Real-time monitoring and management interface for Karen agents, wallets, and transactions"
+---
+
+The Karen Dashboard is a Next.js-based web interface that provides real-time visibility into your autonomous agent infrastructure. Monitor agent activity, track transactions, manage wallets, and interact with agents through a chat interface.
+
+## Starting the Dashboard
+
+The dashboard is located in the `dashboard/` directory:
+
+<Steps>
+  <Step title="Navigate to Dashboard Directory">
+    ```bash
+    cd dashboard
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Start Development Server">
+    ```bash
+    npm run dev
+    ```
+
+    The dashboard will be available at `http://localhost:3000`
+  </Step>
+</Steps>
+
+<Info>
+The dashboard requires the Karen API server to be running. Start it with:
+
+```bash
+npx tsx src/cli/index.ts server start
+```
+</Info>
+
+## Configuration
+
+Configure dashboard API connection via environment variables:
+
+```bash dashboard/.env.local
+# API endpoint (defaults to localhost:3001)
+NEXT_PUBLIC_API_URL=http://localhost:3001
+
+# API authentication secret (must match API_SECRET in main .env)
+NEXT_PUBLIC_API_SECRET=your-api-secret-for-external-agents
+```
+
+## Dashboard Pages
+
+The dashboard includes five main pages:
+
+### Overview (Home)
+
+Real-time system health and activity feed.
+
+**Location**: `dashboard/app/page.tsx:44`
+
+**Features**:
+- **System Stats**: Total agents, active wallets, recent transactions, network status
+- **Recent Activity**: Live transaction feed with status indicators
+- **Wallet Overview**: Quick view of all managed wallets
+- **Auto-refresh**: Updates every 5 seconds
+
+**Data Displayed**:
+
+<CodeGroup>
+```typescript Stats
+interface HealthData {
+  solana: {
+    healthy: boolean
+    slot: number
+    network: string
+  }
+  agents: {
+    totalAgents: number
+    runningAgents: number
+    stoppedAgents: number
+    idleAgents: number
+  }
+}
+```
+
+```typescript Transactions
+interface Transaction {
+  id: string
+  walletId: string
+  agentId?: string
+  type: string
+  status: string
+  signature?: string
+  details: Record<string, unknown>
+  timestamp: string
+}
+```
+</CodeGroup>
+
+### Agents
+
+Manage and monitor all autonomous agents.
+
+**Location**: `dashboard/app/agents/page.tsx:33`
+
+**Features**:
+- **Agent List**: View all agents with status, LLM provider, and strategy
+- **Start/Stop Controls**: Start and stop agents directly from the UI
+- **Live Chat**: Interactive chat interface to communicate with running agents
+- **Auto-refresh**: Updates every 5 seconds
+
+**Agent Data**:
+
+```typescript
+interface Agent {
+  id: string
+  name: string
+  walletId: string
+  llmProvider: string
+  llmModel: string
+  strategy: string
+  status: string
+  loopIntervalMs: number
+  createdAt: string
+}
+```
+
+**Agent Controls**:
+
+- **▶ Start**: Start a stopped agent
+- **⏹ Stop**: Stop a running agent
+- **💬 Chat**: Open chat interface to query the agent
+
+**Chat Interface** (`dashboard/app/agents/page.tsx:176`):
+
+The chat panel allows you to send messages to agents and receive responses:
+
+```typescript
+// Send a message to an agent
+POST /api/v1/agents/{agentId}/chat
+{
+  "message": "What is your current strategy?"
+}
+
+// Response
+{
+  "response": "My strategy is to DCA into USDC whenever I have more than 1 SOL..."
+}
+```
+
+### Wallets
+
+View and manage all Solana wallets.
+
+**Location**: `dashboard/app/wallets/page.tsx:38`
+
+**Features**:
+- **Wallet Cards**: Grid view of all wallets with balances
+- **SOL Balance**: Real-time SOL balance for each wallet
+- **Token Holdings**: List of all SPL token balances
+- **Address Copy**: Click to copy wallet address to clipboard
+- **Explorer Links**: Direct links to Solana Explorer
+- **Auto-refresh**: Updates every 10 seconds
+
+**Wallet Data**:
+
+```typescript
+interface Wallet {
+  id: string
+  name: string
+  publicKey: string
+  createdAt: string
+  tags: string[]
+}
+
+interface Balance {
+  sol: number
+  tokens: {
+    mint: string
+    uiBalance: number
+    decimals: number
+  }[]
+}
+```
+
+### Transactions
+
+Detailed transaction history with guardrail information.
+
+**Location**: `dashboard/app/transactions/page.tsx:33`
+
+**Features**:
+- **Transaction Table**: Comprehensive list of all transactions
+- **Type Icons**: Visual indicators for swap, transfer, airdrop, etc.
+- **Status Badges**: Color-coded status (confirmed, pending, failed, blocked)
+- **Guardrails Applied**: Shows which security checks were applied
+- **Transaction Details**: Amount, token, recipient address
+- **Explorer Links**: Click signature to view on Solana Explorer
+- **Error Messages**: Displays failure reasons for blocked/failed transactions
+- **Auto-refresh**: Updates every 3 seconds
+
+**Transaction Types**:
+
+- 🔄 **swap**: Jupiter token swap
+- ➡️ **transfer**: SOL transfer
+- 🪂 **airdrop**: Devnet airdrop
+- 🪙 **token_transfer**: SPL token transfer
+- 📦 **other**: Custom transaction types
+
+**Guardrail Indicators** (`dashboard/app/transactions/page.tsx:132`):
+
+Each transaction shows which guardrails were applied:
+
+- `max_per_tx`: Per-transaction limit check
+- `rate_limit`: Rate limiting check
+- `daily_limit`: Daily spending limit check
+- `program_allowlist`: Program allowlist check
+- `blocked_address`: Blocked address check
+
+### API Keys
+
+Manage API keys for external agent integration.
+
+**Location**: `dashboard/app/api-keys/page.tsx`
+
+**Features**:
+- **Key Management**: Create, view, and revoke API keys
+- **Permission Control**: Set specific permissions per key
+- **Rate Limits**: Configure per-key rate limits
+- **Spending Limits**: Set SOL spending limits per key
+- **Usage Tracking**: View last used timestamp
+
+## Real-Time Updates
+
+The dashboard uses polling to keep data fresh:
+
+| Page | Refresh Interval | API Endpoints |
+|------|------------------|---------------|
+| Overview | 5 seconds | `/api/v1/health`, `/api/v1/transactions`, `/api/v1/wallets` |
+| Agents | 5 seconds | `/api/v1/agents` |
+| Wallets | 10 seconds | `/api/v1/wallets`, `/api/v1/wallets/{id}/balance` |
+| Transactions | 3 seconds | `/api/v1/transactions?limit=50` |
+
+## Status Indicators
+
+The dashboard uses color-coded badges for quick status recognition:
+
+### Agent Status
+
+- **running** (green): Agent is actively running decision loops
+- **stopped** (gray): Agent is stopped
+- **idle** (blue): Agent is idle
+- **error** (red): Agent encountered an error
+
+### Transaction Status
+
+- **confirmed** (green): Transaction successfully confirmed on-chain
+- **pending** (yellow): Transaction submitted, waiting for confirmation
+- **failed** (red): Transaction failed to execute
+- **blocked** (red): Transaction blocked by guardrails
+
+## Production Deployment
+
+### Build for Production
+
+```bash
+cd dashboard
+npm run build
+npm run start
+```
+
+The optimized build will be available on port 3000.
+
+### Environment Variables
+
+```bash .env.production
+# Production API endpoint
+NEXT_PUBLIC_API_URL=https://api.your-karen-instance.com
+
+# Production API secret
+NEXT_PUBLIC_API_SECRET=your-production-secret
+```
+
+### Docker Deployment
+
+Create a `Dockerfile` in the dashboard directory:
+
+```dockerfile Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["npm", "run", "start"]
+```
+
+Build and run:
+
+```bash
+docker build -t karen-dashboard .
+docker run -p 3000:3000 \
+  -e NEXT_PUBLIC_API_URL=http://api:3001 \
+  -e NEXT_PUBLIC_API_SECRET=your-secret \
+  karen-dashboard
+```
+
+### Reverse Proxy (Nginx)
+
+Example Nginx configuration:
+
+```nginx
+server {
+  listen 80;
+  server_name dashboard.your-karen-instance.com;
+
+  location / {
+    proxy_pass http://localhost:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_cache_bypass $http_upgrade;
+  }
+}
+```
+
+## Troubleshooting
+
+### Dashboard Won't Connect
+
+<Steps>
+  <Step title="Check API Server">
+    Verify the Karen API server is running:
+
+    ```bash
+    curl -H "Authorization: Bearer YOUR_API_SECRET" \
+      http://localhost:3001/api/v1/health
+    ```
+  </Step>
+
+  <Step title="Verify API Secret">
+    Ensure `NEXT_PUBLIC_API_SECRET` matches the `API_SECRET` in your main `.env` file.
+  </Step>
+
+  <Step title="Check CORS">
+    If running the API on a different domain, ensure CORS is configured:
+
+    ```typescript
+    app.use(cors({
+      origin: 'http://localhost:3000',
+      credentials: true,
+    }))
+    ```
+  </Step>
+</Steps>
+
+### Data Not Updating
+
+The dashboard uses `fetch` with `cache: 'no-store'` to ensure fresh data. If data appears stale:
+
+1. Check browser console for API errors
+2. Verify the API server is responding with current data
+3. Clear browser cache and reload
+
+### Chat Not Working
+
+The agent chat feature requires:
+
+1. Agent must be in `running` status
+2. API endpoint `/api/v1/agents/{id}/chat` must be implemented
+3. Agent must be actively listening for chat messages
+
+## Custom Styling
+
+The dashboard uses CSS variables for theming (`dashboard/app/globals.css`):
+
+```css
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #13131a;
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --accent-primary: #6366f1;
+  --status-success: #10b981;
+  --status-error: #ef4444;
+  --border-color: rgba(255, 255, 255, 0.1);
+}
+```
+
+Customize these variables to match your brand.
+
+## Next Steps
+
+- Create [Custom Skills](/development/custom-skills) to extend agent capabilities
+- Configure [Guardrails](/development/configuration) for production safety
+- Integrate external agents via [API](/api-reference/wallets)

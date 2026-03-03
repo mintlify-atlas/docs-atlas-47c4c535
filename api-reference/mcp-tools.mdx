@@ -1,0 +1,504 @@
+---
+title: "MCP Tools Reference"
+description: "Complete reference for all Karen MCP tools available to external agents"
+---
+
+# MCP Tools
+
+Karen exposes 17 MCP (Model Context Protocol) tools that enable any AI agent to interact with Solana. Add Karen to your MCP-compatible agent (Claude Desktop, OpenClaw, LangChain, etc.) to give it autonomous wallet capabilities.
+
+## Configuration
+
+Add Karen to your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "karen": {
+      "command": "npx",
+      "args": ["tsx", "path/to/karen/src/mcp/server.ts"]
+    }
+  }
+}
+```
+
+## Wallet Management
+
+### karen_create_wallet
+
+Create a new managed Solana wallet.
+
+<ParamField path="name" type="string" required>
+  Human-readable name for the wallet
+</ParamField>
+
+<ResponseField name="walletId" type="string">
+  Unique wallet identifier for use in other tools
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Wallet name
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Solana public key (base58)
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message with next steps
+</ResponseField>
+
+```typescript
+interface CreateWalletResponse {
+  walletId: string
+  name: string
+  address: string
+  message: string
+}
+```
+
+**Example:**
+```json
+{
+  "name": "karen_create_wallet",
+  "arguments": {
+    "name": "my-trading-wallet"
+  }
+}
+```
+
+---
+
+### karen_balance
+
+Check SOL and SPL token balances for a wallet.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID returned from karen_create_wallet
+</ParamField>
+
+<ResponseField name="wallet" type="string">
+  Wallet name
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Wallet public key
+</ResponseField>
+
+<ResponseField name="sol" type="number">
+  SOL balance in native units
+</ResponseField>
+
+<ResponseField name="tokens" type="TokenBalance[]">
+  Array of SPL token holdings
+</ResponseField>
+
+```typescript
+interface BalanceResponse {
+  wallet: string
+  address: string
+  sol: number
+  tokens: TokenBalance[]
+}
+
+interface TokenBalance {
+  mint: string
+  symbol?: string
+  balance: number
+  decimals: number
+  uiBalance: number
+}
+```
+
+---
+
+### karen_list_wallets
+
+List all managed wallets with their addresses and names.
+
+**No parameters required.**
+
+<ResponseField name="wallets" type="WalletInfo[]">
+  Array of all managed wallets
+</ResponseField>
+
+```typescript
+interface WalletInfo {
+  id: string
+  name: string
+  publicKey: string
+  createdAt: string
+  derivationIndex?: number
+  tags: string[]
+}
+```
+
+---
+
+## Funding & Transfers
+
+### karen_airdrop
+
+Request SOL from the devnet faucet. Devnet only, max 2 SOL per request.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID to fund
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount of SOL to request (max 2)
+</ParamField>
+
+<ResponseField name="status" type="string">
+  Transaction status: "confirmed" or "failed"
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Solana transaction signature
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if failed
+</ResponseField>
+
+---
+
+### karen_transfer
+
+Send SOL from a managed wallet to any Solana address.
+
+<ParamField path="walletId" type="string" required>
+  Source wallet ID
+</ParamField>
+
+<ParamField path="to" type="string" required>
+  Recipient Solana address (base58)
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount of SOL to send
+</ParamField>
+
+<ResponseField name="status" type="string">
+  Transaction status
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="guardrails" type="string[]">
+  List of guardrails applied to this transaction
+</ResponseField>
+
+```typescript
+interface TransferResponse {
+  status: 'confirmed' | 'failed' | 'blocked'
+  signature?: string
+  error?: string
+  guardrails: string[]
+}
+```
+
+---
+
+## Trading
+
+### karen_swap
+
+Swap tokens using Jupiter DEX. Supports SOL, USDC, USDT, BONK, or any mint address.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID to swap from
+</ParamField>
+
+<ParamField path="inputToken" type="string" required>
+  Token to sell (e.g., "SOL", "USDC", or mint address)
+</ParamField>
+
+<ParamField path="outputToken" type="string" required>
+  Token to buy (e.g., "USDC", "SOL")
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount of input token to swap
+</ParamField>
+
+<ParamField path="slippageBps" type="number">
+  Max slippage in basis points (default: 50 = 0.5%)
+</ParamField>
+
+**Example:**
+```json
+{
+  "name": "karen_swap",
+  "arguments": {
+    "walletId": "abc-123",
+    "inputToken": "SOL",
+    "outputToken": "USDC",
+    "amount": 0.5,
+    "slippageBps": 50
+  }
+}
+```
+
+---
+
+## Transaction History
+
+### karen_tx_history
+
+Get transaction history for a wallet or all wallets.
+
+<ParamField path="walletId" type="string">
+  Wallet ID (optional — omit for all wallets)
+</ParamField>
+
+<ParamField path="limit" type="number">
+  Number of transactions to return (default: 20)
+</ParamField>
+
+<ResponseField name="transactions" type="TransactionRecord[]">
+  Array of transaction records
+</ResponseField>
+
+```typescript
+interface TransactionRecord {
+  id: string
+  walletId: string
+  agentId?: string
+  type: TransactionType
+  status: 'pending' | 'confirmed' | 'failed' | 'blocked'
+  signature?: string
+  details: TransactionDetails
+  guardrailsApplied: string[]
+  timestamp: string
+  error?: string
+}
+```
+
+---
+
+## Token Launch & Management
+
+### karen_launch_token
+
+Create a new SPL token with initial supply. You become the mint and freeze authority.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Token name
+</ParamField>
+
+<ParamField path="symbol" type="string" required>
+  Token ticker symbol
+</ParamField>
+
+<ParamField path="decimals" type="number">
+  Decimal places (default: 9)
+</ParamField>
+
+<ParamField path="initialSupply" type="number">
+  Initial supply in whole units (default: 1,000,000)
+</ParamField>
+
+---
+
+### karen_mint_supply
+
+Mint additional tokens for a token you created. Must be mint authority.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="mint" type="string" required>
+  Token mint address
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount to mint
+</ParamField>
+
+<ParamField path="decimals" type="number">
+  Token decimals (default: 9)
+</ParamField>
+
+---
+
+### karen_revoke_authority
+
+Permanently revoke mint or freeze authority on a token. **IRREVERSIBLE.**
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="mint" type="string" required>
+  Token mint address
+</ParamField>
+
+<ParamField path="authorityType" type="string">
+  "mint" or "freeze" (default: "mint")
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="authorityType" type="string">
+  Type of authority revoked
+</ResponseField>
+
+<ResponseField name="revoked" type="boolean">
+  Confirmation that authority was revoked
+</ResponseField>
+
+---
+
+## Staking
+
+### karen_stake
+
+Stake SOL by delegating to a Solana validator.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  SOL to stake
+</ParamField>
+
+<ParamField path="validator" type="string">
+  Validator vote account (optional, uses default devnet validator)
+</ParamField>
+
+---
+
+### karen_unstake
+
+Deactivate a stake account. After 1 epoch, you can withdraw.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="stakeAccount" type="string" required>
+  Stake account public key
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="deactivated" type="boolean">
+  Confirmation that stake was deactivated
+</ResponseField>
+
+---
+
+### karen_withdraw_stake
+
+Withdraw SOL from a fully deactivated stake account.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="stakeAccount" type="string" required>
+  Stake account public key
+</ParamField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="withdrawn" type="boolean">
+  Confirmation that stake was withdrawn
+</ResponseField>
+
+---
+
+### karen_list_stakes
+
+List all stake accounts for a wallet.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ResponseField name="stakes" type="StakeAccount[]">
+  Array of stake accounts with status and balances
+</ResponseField>
+
+---
+
+## Token Account Operations
+
+### karen_burn
+
+Burn (destroy) SPL tokens from your wallet.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="mint" type="string" required>
+  Token mint address
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount to burn
+</ParamField>
+
+---
+
+### karen_close_account
+
+Close an empty token account to reclaim rent SOL.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="mint" type="string" required>
+  Token mint address
+</ParamField>
+
+---
+
+## Wrapped SOL
+
+### karen_wrap_sol
+
+Convert SOL to Wrapped SOL (wSOL) for DeFi interactions.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  SOL to wrap
+</ParamField>
+
+---
+
+### karen_unwrap_sol
+
+Convert all wSOL back to native SOL.
+
+<ParamField path="walletId" type="string" required>
+  Wallet ID
+</ParamField>
+
+---
+
+## See Also
+
+- [WalletManager SDK](/api-reference/wallet-manager) - Direct SDK usage
+- [TransactionEngine SDK](/api-reference/transaction-engine) - Transaction execution
+- [Security Guardrails](/core-concepts/security) - Transaction safety features

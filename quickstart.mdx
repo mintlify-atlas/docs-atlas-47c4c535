@@ -1,80 +1,481 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get from zero to running agent in 5 minutes - create a wallet, fund it with devnet SOL, create an autonomous agent, and watch it trade
 ---
 
-## Get started in three steps
+# Quickstart
 
-Get your documentation site running locally and make your first customization.
+Get from zero to a running autonomous agent in 5 minutes. This guide will:
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+1. Create a Solana wallet
+2. Fund it with devnet SOL
+3. Create an AI agent with a trading strategy
+4. Start the agent and watch it operate
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+This quickstart assumes you've already installed Karen. If not, see [Installation](/installation) first.
 </Note>
+
+## Step 1: Create a Wallet
+
+Every agent needs a wallet to hold funds and sign transactions. Create one:
+
+<CodeGroup>
+```bash npm
+npx tsx src/cli/index.ts wallet create --name "my-agent-wallet"
+```
+
+```bash CLI shorthand
+karennpm run cli wallet create --name "my-agent-wallet"
+```
+</CodeGroup>
+
+**Output:**
+```
+✅ Wallet created:
+   Name:    my-agent-wallet
+   ID:      a1b2c3d4-e5f6-7890-abcd-ef1234567890
+   Address: 7xKzL8QyJ9X3NpRqW5vU2TbM4cA6hF8sD1eG9oP2iB3k
+```
+
+<Note>
+Your wallet address will be different. Copy it - you'll need it to view transactions on [Solana Explorer](https://explorer.solana.com/?cluster=devnet).
+</Note>
+
+### How Wallets Work
+
+Karen creates HD (Hierarchical Deterministic) wallets using BIP-44 derivation:
+
+```typescript
+// src/core/wallet/wallet-manager.ts:72-77
+if (opts.mnemonic) {
+  info = await walletManager.createDerivedWallet(
+    opts.name,
+    opts.mnemonic,
+    Number(opts.index),
+  )
+```
+
+Wallets are encrypted with AES-256-GCM and stored in `data/keystores/`.
+
+## Step 2: Fund Your Wallet
+
+Request devnet SOL from the faucet (up to 2 SOL per request):
+
+```bash
+npx tsx src/cli/index.ts wallet airdrop --name "my-agent-wallet" --amount 2
+```
+
+**Output:**
+```
+⏳ Requesting 2 SOL airdrop...
+✅ Airdropped 2 SOL
+   Signature: 5KzX9mP2wQ7vN3jL8sR4tB6yH1cF9eD2gT8oA5iU3kW7v...
+```
+
+<Warning>
+Airdrops sometimes fail due to rate limiting. If it fails, wait 30 seconds and try again. Devnet faucets are free but rate-limited.
+</Warning>
+
+### Check Your Balance
+
+Verify the funds arrived:
+
+```bash
+npx tsx src/cli/index.ts wallet balance --name "my-agent-wallet"
+```
+
+**Output:**
+```
+💰 my-agent-wallet (7xKzL8QyJ9X3NpRqW5vU2TbM4cA6hF8sD1eG9oP2iB3k):
+
+  SOL: 2.0000
+```
+
+## Step 3: Create an AI Agent
+
+Now create an autonomous agent with a trading strategy. The agent will:
+
+- Run every 30 seconds (configurable)
+- Observe wallet state and market conditions
+- Use an LLM (GPT-4o or Claude) to decide actions
+- Execute one skill per cycle (swap, transfer, stake, etc.)
+
+```bash
+npx tsx src/cli/index.ts agent create \
+  --name "DCA-Bot" \
+  --strategy "Buy USDC with 0.5 SOL every cycle when balance > 1 SOL. If balance drops below 0.5 SOL, request airdrop." \
+  --llm openai \
+  --max-per-tx 1 \
+  --daily-limit 5
+```
+
+### Command Options
+
+| Option | Description | Default |
+|--------|-------------|----------|
+| `--name` | Agent name (must be unique) | Required |
+| `--strategy` | Natural language trading strategy | Required |
+| `--llm` | LLM provider (`openai`, `anthropic`, `grok`, `gemini`) | `openai` |
+| `--model` | Specific model (e.g., `gpt-4o`, `claude-3-5-sonnet-20241022`) | Provider default |
+| `--interval` | Loop interval in milliseconds | `30000` (30s) |
+| `--max-per-tx` | Max SOL per transaction | `2` |
+| `--daily-limit` | Daily spending limit in SOL | `10` |
+
+**Output:**
+```
+✅ Agent created:
+   Name:     DCA-Bot
+   ID:       b2c3d4e5-f6a7-8901-bcde-f12345678901
+   Wallet:   a1b2c3d4-e5f6-7890-abcd-ef1234567890
+   LLM:      openai (gpt-4o)
+   Strategy: Buy USDC with 0.5 SOL every cycle when balance > 1 SOL...
+
+   Start with: karen agent start --name DCA-Bot
+```
+
+### How Agent Creation Works
+
+The orchestrator creates the agent config and runtime:
+
+```typescript
+// src/agent/orchestrator.ts:92-163
+async createAgent(options: CreateAgentOptions): Promise<AgentConfig> {
+  const agentId = uuidv4()
+
+  // Create a wallet for this agent
+  let walletInfo
+  if (options.mnemonic && options.derivationIndex !== undefined) {
+    walletInfo = await this.walletManager.createDerivedWallet(
+      options.walletName || `${options.name}-wallet`,
+      options.mnemonic,
+      options.derivationIndex,
+      ['agent', agentId],
+    )
+  } else {
+    walletInfo = await this.walletManager.createWallet(
+      options.walletName || `${options.name}-wallet`,
+      ['agent', agentId],
+    )
+  }
+
+  const config: AgentConfig = {
+    id: agentId,
+    name: options.name,
+    walletId: walletInfo.id,
+    llmProvider: rawProvider,
+    llmModel: options.llmModel || defaultModel,
+    strategy: options.strategy,
+    guardrails: {
+      ...DEFAULT_GUARDRAIL_CONFIG,
+      maxSolPerTransaction: options.maxSolPerTransaction ?? DEFAULT_GUARDRAIL_CONFIG.maxSolPerTransaction,
+      maxTransactionsPerMinute: options.maxTransactionsPerMinute ?? DEFAULT_GUARDRAIL_CONFIG.maxTransactionsPerMinute,
+      dailySpendingLimitSol: options.dailySpendingLimitSol ?? DEFAULT_GUARDRAIL_CONFIG.dailySpendingLimitSol,
+    },
+    loopIntervalMs: options.loopIntervalMs || Number(process.env.AGENT_LOOP_INTERVAL_MS) || 30000,
+    status: 'idle',
+    createdAt: new Date().toISOString(),
+  }
+
+  // Create runtime with skills
+  const skills = createDefaultSkillRegistry()
+  const runtime = new AgentRuntime(config, this.walletManager, this.transactionEngine, this.logger, skills, this.memory)
+
+  this.agents.set(agentId, runtime)
+  this.configs.set(agentId, config)
+  this.saveAgents()
+
+  return config
+}
+```
+
+## Step 4: Start the Agent
+
+Launch your agent. It will run continuously until you stop it:
+
+```bash
+npx tsx src/cli/index.ts agent start --name "DCA-Bot"
+```
+
+**Output:**
+```
+✅ Agent "DCA-Bot" started. It is now running autonomously.
+   Loop interval: 30000ms
+   Press Ctrl+C to stop.
+```
+
+The agent now enters its **observe-think-act-remember** loop:
+
+<Steps>
+  <Step title="Observe">
+    Agent checks wallet balance, recent transactions, and on-chain state:
+    
+    ```typescript
+    // src/agent/runtime.ts:227-266
+    private async observe(): Promise<Record<string, unknown>> {
+      const balances = await this.walletManager.getBalances(this.config.walletId)
+      const wallet = this.walletManager.getWallet(this.config.walletId)
+      const recentTxs = this.transactionEngine.getTransactionHistory(
+        this.config.walletId,
+        5,
+      )
+
+      return {
+        wallet: {
+          name: wallet?.name,
+          address: wallet?.publicKey,
+        },
+        balances: {
+          sol: balances.sol,
+          tokens: balances.tokens.map((t) => ({
+            mint: t.mint,
+            balance: t.uiBalance,
+          })),
+        },
+        recentTransactions: recentTxs,
+        cycle: this.cycle,
+        timestamp: new Date().toISOString(),
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Think">
+    LLM receives observations and strategy, then decides on an action:
+    
+    ```typescript
+    // src/agent/runtime.ts:270-302
+    private async think(observations: Record<string, unknown>) {
+      const systemPrompt = this.buildSystemPrompt()
+      const recentMemory = this.memory.formatForContext(this.config.id, 10)
+
+      const userMessage = `CURRENT STATE:\n${JSON.stringify(observations, null, 2)}\n\nRECENT MEMORY:\n${recentMemory}\n\nBased on your strategy and the current state, what would you like to do?`
+
+      const messages: LLMMessage[] = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ]
+
+      const tools = this.skills.getToolDefinitions()
+      const response = await this.getLlm().chat(
+        messages,
+        tools,
+        this.config.llmModel,
+      )
+
+      const action = response.toolCalls && response.toolCalls.length > 0
+        ? response.toolCalls[0]
+        : null
+
+      return {
+        reasoning: response.content || 'No explicit reasoning provided.',
+        action,
+        rawResponse: response.content,
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Act">
+    Agent executes the chosen skill (e.g., `swap`, `transfer`, `airdrop`):
+    
+    ```typescript
+    // src/agent/runtime.ts:306-320
+    private async act(action: SkillInvocation): Promise<string> {
+      const context: SkillContext = {
+        walletId: this.config.walletId,
+        agentId: this.config.id,
+        walletManager: this.walletManager,
+        transactionEngine: this.transactionEngine,
+        jupiter: this.jupiter,
+        splToken: this.splToken,
+        tokenLauncher: this.tokenLauncher,
+        staking: this.staking,
+        wrappedSol: this.wrappedSol,
+      }
+
+      return this.skills.execute(action.skill, action.params, context)
+    }
+    ```
+  </Step>
+  
+  <Step title="Remember">
+    Decision is persisted to memory for future cycles:
+    
+    ```typescript
+    // src/agent/runtime.ts:202-223
+    const decision: AgentDecision = {
+      agentId: this.config.id,
+      cycle: this.cycle,
+      observations,
+      reasoning,
+      action,
+      outcome,
+      timestamp: new Date().toISOString(),
+    }
+
+    this.logger.logDecision(decision)
+    this.logger.logEvent({ type: 'agent:decision', data: decision })
+    this.memory.addMemory(this.config.id, {
+      cycle: this.cycle,
+      reasoning,
+      action: action
+        ? `${action.skill}(${JSON.stringify(action.params)})`
+        : null,
+      outcome,
+      timestamp: new Date().toISOString(),
+    })
+    ```
+  </Step>
+</Steps>
+
+### What to Expect
+
+Your agent will:
+
+1. **First cycle**: Check balance (2 SOL), decide to swap 0.5 SOL for USDC
+2. **Execute swap**: Call Jupiter DEX, sign transaction, confirm on-chain
+3. **Log decision**: Store reasoning and outcome in memory
+4. **Wait 30 seconds**: Sleep until next cycle
+5. **Repeat**: Continue trading based on strategy and market conditions
+
+<Note>
+**First swap may take 60-90 seconds** due to:
+- Jupiter quote API response time
+- Transaction confirmation on devnet
+- RPC node latency
+
+Subsequent cycles will be faster as connections warm up.
+</Note>
+
+## Step 5: Monitor Your Agent
+
+While the agent runs, open a new terminal and check activity:
+
+### View Agent Status
+
+```bash
+npx tsx src/cli/index.ts agent list
+```
+
+**Output:**
+```
+🤖 Agents (1):
+
+  DCA-Bot (b2c3d4e5...)
+    Status:   running
+    Wallet:   a1b2c3d4...
+    LLM:      openai (gpt-4o)
+    Strategy: Buy USDC with 0.5 SOL every cycle when balance > 1 SOL...
+    Created:  2026-03-03T10:30:45.123Z
+```
+
+### View Transaction History
+
+```bash
+npx tsx src/cli/index.ts tx list --wallet "my-agent-wallet" --limit 10
+```
+
+**Output:**
+```
+📋 Transactions (3):
+
+  ✅ swap (5a1b2c3d...)
+     Wallet: a1b2c3d4...
+     Tx: 3kL9mN5pQ2wX7rV8tY4uB6hC1dE9fG2sA3oI5kW7v...
+     Time: 2026-03-03T10:31:15.456Z
+
+  ✅ airdrop (4z9y8x7w...)
+     Wallet: a1b2c3d4...
+     Tx: 2jH8lM4oP1vW6qT7sX3zA5gB9cD8eF1rA2nH4jV6u...
+     Time: 2026-03-03T10:30:50.789Z
+```
+
+### Check Wallet Balance
+
+```bash
+npx tsx src/cli/index.ts wallet balance --name "my-agent-wallet"
+```
+
+**Output:**
+```
+💰 my-agent-wallet (7xKzL8QyJ9X3NpRqW5vU2TbM4cA6hF8sD1eG9oP2iB3k):
+
+  SOL: 1.4982
+
+  Tokens:
+    EPjFWdd5Au...USDC: 0.5 (6 decimals)
+```
+
+### Stop the Agent
+
+Press `Ctrl+C` in the agent terminal:
+
+```
+^C
+🛑 All agents stopped.
+```
+
+Or stop from another terminal:
+
+```bash
+npx tsx src/cli/index.ts agent stop --name "DCA-Bot"
+```
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Agent Skills" icon="brain" href="/skills/overview">
+    Explore all 17 skills your agent can use
+  </Card>
+  <Card title="API Integration" icon="plug" href="/api-reference/wallets">
+    Connect external agents via REST API or MCP
+  </Card>
+  <Card title="Security Guardrails" icon="shield" href="/core-concepts/security">
+    Configure spending limits and program allowlists
+  </Card>
+  <Card title="Advanced Strategies" icon="chart-line" href="/core-concepts/agents">
+    Write sophisticated trading strategies
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Airdrop failed with 'rate limit exceeded'">
+    Devnet faucets rate-limit requests. Wait 30 seconds and try again, or use a different RPC endpoint in `.env`:
+    
+    ```bash
+    SOLANA_RPC_URL=https://api.devnet.solana.com
+    ```
+  </Accordion>
+  
+  <Accordion title="Agent stuck on 'wait' skill">
+    Check your LLM API key is valid and has credits. Enable debug logging:
+    
+    ```bash
+    DEBUG=karen:* npx tsx src/cli/index.ts agent start --name "DCA-Bot"
+    ```
+  </Accordion>
+  
+  <Accordion title="Swap failed with 'insufficient liquidity'">
+    Not all tokens have devnet liquidity. Stick to major tokens:
+    - SOL (native)
+    - USDC: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
+    - USDT: `Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB`
+  </Accordion>
+  
+  <Accordion title="Transaction blocked by guardrails">
+    Check transaction logs for reason:
+    
+    ```bash
+    npx tsx src/cli/index.ts tx list --wallet "my-agent-wallet"
+    ```
+    
+    Adjust guardrails when creating agent:
+    
+    ```bash
+    --max-per-tx 5 --daily-limit 20
+    ```
+  </Accordion>
+</AccordionGroup>

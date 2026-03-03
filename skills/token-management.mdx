@@ -1,0 +1,392 @@
+---
+title: 'Token Management'
+description: 'Create, mint, burn, and manage SPL tokens on Solana'
+---
+
+## Overview
+
+Token management skills enable agents to create and control SPL (Solana Program Library) tokens. These skills provide full lifecycle management from token creation to supply control to account cleanup.
+
+## launch_token
+
+Create a new SPL token on Solana with an initial supply minted to your wallet. You become the mint authority and freeze authority for the token.
+
+### Parameters
+
+<ParamField path="name" type="string" required>
+  Token name (e.g., "My Agent Token"). This is stored in token metadata.
+</ParamField>
+
+<ParamField path="symbol" type="string" required>
+  Token ticker symbol (e.g., "MAT", "AGT"). Typically 3-5 characters, uppercase.
+</ParamField>
+
+<ParamField path="decimals" type="number">
+  Number of decimal places for the token. Default: 9.
+  
+  Common values:
+  - 9 (standard for Solana tokens)
+  - 6 (common for stablecoins like USDC)
+  - 0 (for NFTs or non-divisible tokens)
+</ParamField>
+
+<ParamField path="initialSupply" type="number">
+  Initial token supply in whole units. Default: 1,000,000.
+  
+  Example: If decimals=9 and initialSupply=1000000, the actual supply will be 1,000,000 * 10^9 base units.
+</ParamField>
+
+### What You Get
+
+When you launch a token, the system:
+1. Creates a new mint account (token definition)
+2. Creates your associated token account (ATA)
+3. Mints the initial supply to your ATA
+4. Sets you as mint authority (can mint more)
+5. Sets you as freeze authority (can freeze accounts)
+
+### Example Invocation
+
+```json
+{
+  "skill": "launch_token",
+  "params": {
+    "name": "Agent Coin",
+    "symbol": "AGT",
+    "decimals": 9,
+    "initialSupply": 1000000
+  }
+}
+```
+
+### Example Response
+
+```
+Token launched successfully!
+Name: Agent Coin (AGT)
+Mint: 7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL
+Decimals: 9
+Initial Supply: 1,000,000
+Your Token Account: 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i
+Transaction: 2ZE7xQ8...signature
+```
+
+<Tip>
+**Mint Address is Permanent:** Save the mint address! This is the permanent identifier for your token. You'll need it for all future operations (minting, revoking authority, etc.).
+</Tip>
+
+---
+
+## mint_supply
+
+Mint additional tokens for a token you created. You must be the current mint authority.
+
+### Parameters
+
+<ParamField path="mint" type="string" required>
+  Mint address of the token (from `launch_token` response).
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount of tokens to mint in whole units (not base units).
+</ParamField>
+
+<ParamField path="decimals" type="number">
+  Token decimals (must match the token's decimals). Default: 9.
+</ParamField>
+
+### Example Invocation
+
+```json
+{
+  "skill": "mint_supply",
+  "params": {
+    "mint": "7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL",
+    "amount": 500000,
+    "decimals": 9
+  }
+}
+```
+
+### Example Response
+
+```
+Minted 500,000 tokens!
+Mint: 7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL
+Transaction: 4YT9pL6...signature
+```
+
+<Warning>
+**Mint Authority Required:** You can only mint additional supply if you are the mint authority. If you've revoked mint authority, this operation will fail.
+</Warning>
+
+---
+
+## revoke_mint_authority
+
+Permanently revoke minting capability for a token. **This is irreversible.**
+
+### Why Revoke Mint Authority?
+
+Revoking mint authority is a trust signal to token holders:
+- **Fixed Supply:** No more tokens can ever be minted
+- **No Inflation:** Token supply is permanently capped
+- **Increased Trust:** Holders know the supply won't be diluted
+
+### Parameters
+
+<ParamField path="mint" type="string" required>
+  Mint address of the token to revoke authority on.
+</ParamField>
+
+### Example Invocation
+
+```json
+{
+  "skill": "revoke_mint_authority",
+  "params": {
+    "mint": "7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL"
+  }
+}
+```
+
+### Example Response
+
+```
+Mint authority PERMANENTLY REVOKED for 7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL.
+No more tokens can ever be minted.
+Transaction: 6PQ2wK7...signature
+```
+
+<Warning>
+**IRREVERSIBLE ACTION:** Once mint authority is revoked, it cannot be restored. Make sure this is what you want before executing.
+</Warning>
+
+---
+
+## burn_tokens
+
+Burn (destroy) SPL tokens from your wallet. This permanently removes them from circulation.
+
+### Parameters
+
+<ParamField path="mint" type="string" required>
+  Mint address of the token to burn.
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount of tokens to burn in whole units.
+</ParamField>
+
+### Use Cases
+
+- **Reduce supply:** Permanently decrease circulating supply
+- **Deflationary mechanism:** Implement token burn economics
+- **Correct mistakes:** Remove tokens from a test mint
+
+### Example Invocation
+
+```json
+{
+  "skill": "burn_tokens",
+  "params": {
+    "mint": "7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL",
+    "amount": 100000
+  }
+}
+```
+
+### Example Response
+
+```
+Burned 100,000 tokens!
+Mint: 7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL
+Transaction: 8QL4mN3...signature
+```
+
+<Info>
+**Burning vs Minting:** You don't need mint authority to burn tokens. Any holder can burn their own tokens.
+</Info>
+
+---
+
+## close_token_account
+
+Close an empty token account to reclaim the rent-exempt SOL balance (~0.002 SOL per account).
+
+### Parameters
+
+<ParamField path="mint" type="string" required>
+  Mint address of the token account to close.
+</ParamField>
+
+### Requirements
+
+<Warning>
+The token account must have a **zero balance**. If you have tokens remaining:
+1. Transfer them to another address, or
+2. Burn them using `burn_tokens`
+</Warning>
+
+### Example Invocation
+
+```json
+{
+  "skill": "close_token_account",
+  "params": {
+    "mint": "7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL"
+  }
+}
+```
+
+### Example Response
+
+```
+Token account closed!
+Rent reclaimed: 0.002039 SOL
+Transaction: 9VM5oP8...signature
+```
+
+<Tip>
+**Rent Reclamation:** Each token account requires ~0.002 SOL as rent-exempt balance. Closing unused accounts frees up this SOL.
+</Tip>
+
+---
+
+## Complete Token Launch Workflow
+
+### Scenario: Agent creates a token, mints more supply, then revokes authority
+
+#### Cycle 1: Launch Token
+```json
+{
+  "skill": "launch_token",
+  "params": {
+    "name": "Agent Governance Token",
+    "symbol": "AGOV",
+    "decimals": 9,
+    "initialSupply": 10000000
+  }
+}
+```
+**Response:**
+```
+Token launched successfully!
+Name: Agent Governance Token (AGOV)
+Mint: 7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL
+Initial Supply: 10,000,000
+```
+
+#### Cycle 2: Check Balance
+```json
+{"skill": "check_balance", "params": {}}
+```
+**Response:**
+```
+SOL: 4.9980 SOL
+Tokens:
+  7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL: 10000000.0 (9 decimals)
+```
+
+#### Cycle 3: Mint Additional Supply
+```json
+{
+  "skill": "mint_supply",
+  "params": {
+    "mint": "7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL",
+    "amount": 5000000,
+    "decimals": 9
+  }
+}
+```
+**Response:** `Minted 5,000,000 tokens! (Total supply now: 15,000,000)`
+
+#### Cycle 4: Revoke Mint Authority (Fixed Supply)
+```json
+{
+  "skill": "revoke_mint_authority",
+  "params": {
+    "mint": "7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL"
+  }
+}
+```
+**Response:** `Mint authority PERMANENTLY REVOKED. Supply capped at 15,000,000.`
+
+#### Cycle 5: Verify with Token Info
+```json
+{
+  "skill": "token_info",
+  "params": {
+    "symbol": "7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL"
+  }
+}
+```
+**Response:**
+```
+Token: 7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL
+Decimals: 9
+Supply: 15000000000000000 (15,000,000 in UI units)
+Initialized: true
+```
+
+---
+
+## Token Economics Strategies
+
+### Fixed Supply Token
+
+1. Launch with desired total supply
+2. Immediately revoke mint authority
+3. Result: Bitcoin-like fixed supply model
+
+```json
+{"skill": "launch_token", "params": {"name": "Fixed Token", "symbol": "FIX", "initialSupply": 21000000}}
+{"skill": "revoke_mint_authority", "params": {"mint": "[MINT_ADDRESS]"}}
+```
+
+### Inflationary Token
+
+1. Launch with initial supply
+2. Keep mint authority
+3. Mint additional supply on schedule
+4. Result: Controlled inflation model
+
+### Deflationary Token
+
+1. Launch with supply
+2. Burn tokens periodically
+3. Optionally revoke mint authority
+4. Result: Decreasing supply over time
+
+---
+
+## Token Metadata
+
+<Note>
+Currently, token name and symbol are stored in Karen's internal database. For production tokens on mainnet, you should also create Metaplex token metadata for broader ecosystem compatibility.
+</Note>
+
+---
+
+## Error Handling
+
+### Common Token Errors
+
+- **Not mint authority:** Can't mint or revoke authority if you're not the mint authority
+- **Account not empty:** Can't close token account with non-zero balance
+- **Insufficient balance:** Can't burn more tokens than you own
+- **Invalid decimals:** Decimals mismatch between mint and parameters
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="DeFi Operations" icon="arrow-right-arrow-left" href="/skills/defi">
+    Learn how to swap your newly created tokens
+  </Card>
+  
+  <Card title="Staking" icon="layer-group" href="/skills/staking">
+    Stake SOL to validators and earn rewards
+  </Card>
+</CardGroup>

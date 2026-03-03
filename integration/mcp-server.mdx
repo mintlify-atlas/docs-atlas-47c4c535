@@ -1,0 +1,571 @@
+---
+title: MCP Server
+description: Use Karen as a Model Context Protocol (MCP) server for Claude Desktop, OpenClaw, and other MCP-compatible agents
+---
+
+## Overview
+
+Karen exposes all wallet and DeFi capabilities as **MCP tools**, allowing any MCP-compatible AI agent (like Claude Desktop or OpenClaw) to manage Solana wallets and execute transactions autonomously.
+
+The MCP server runs on stdio, making it compatible with:
+- **Claude Desktop** (Anthropic)
+- **OpenClaw** (AI-powered CLI)
+- **LangChain** with MCP support
+- Any MCP-compatible framework
+
+<Info>
+  Karen implements the [Model Context Protocol](https://modelcontextprotocol.io) specification from the `@modelcontextprotocol/sdk` package.
+</Info>
+
+---
+
+## Installation
+
+<Steps>
+  <Step title="Clone and build Karen">
+    ```bash
+    git clone https://github.com/yourusername/karen.git
+    cd karen
+    npm install
+    npm run build
+    ```
+  </Step>
+
+  <Step title="Set environment variables">
+    Create a `.env` file:
+    ```bash
+    KEYSTORE_PASSWORD=your-secure-password
+    SOLANA_NETWORK=devnet
+    ```
+  </Step>
+
+  <Step title="Test the MCP server">
+    ```bash
+    npx tsx src/mcp/server.ts
+    ```
+    You should see: `Karen MCP server running on stdio`
+  </Step>
+</Steps>
+
+---
+
+## Configuration
+
+### Claude Desktop
+
+Add Karen to your Claude Desktop MCP configuration:
+
+<CodeGroup>
+```json macOS
+{
+  "mcpServers": {
+    "karen": {
+      "command": "npx",
+      "args": ["tsx", "/path/to/karen/src/mcp/server.ts"],
+      "env": {
+        "KEYSTORE_PASSWORD": "your-secure-password",
+        "SOLANA_NETWORK": "devnet"
+      }
+    }
+  }
+}
+```
+
+```json Windows
+{
+  "mcpServers": {
+    "karen": {
+      "command": "npx",
+      "args": ["tsx", "C:\\path\\to\\karen\\src\\mcp\\server.ts"],
+      "env": {
+        "KEYSTORE_PASSWORD": "your-secure-password",
+        "SOLANA_NETWORK": "devnet"
+      }
+    }
+  }
+}
+```
+
+```json Linux
+{
+  "mcpServers": {
+    "karen": {
+      "command": "npx",
+      "args": ["tsx", "/home/user/karen/src/mcp/server.ts"],
+      "env": {
+        "KEYSTORE_PASSWORD": "your-secure-password",
+        "SOLANA_NETWORK": "devnet"
+      }
+    }
+  }
+}
+```
+</CodeGroup>
+
+**Config file locations:**
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+### OpenClaw
+
+Add to your `.openclaw/config.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "karen": {
+        "command": "npx",
+        "args": ["tsx", "/path/to/karen/src/mcp/server.ts"]
+      }
+    }
+  }
+}
+```
+
+---
+
+## Available Tools
+
+Karen exposes **20 MCP tools** for wallet and DeFi operations. All tools are prefixed with `karen_`.
+
+### Wallet Management
+
+<AccordionGroup>
+  <Accordion title="karen_create_wallet">
+    Create a new managed Solana wallet.
+
+    **Parameters:**
+    <ParamField path="name" type="string" required>
+      Human-readable name for the wallet
+    </ParamField>
+
+    **Returns:**
+    ```json
+    {
+      "walletId": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "my-wallet",
+      "address": "7xKKzD8qH...",
+      "message": "Wallet created. Use karen_airdrop to fund it with devnet SOL."
+    }
+    ```
+
+    **Example usage in Claude:**
+    > "Create a new wallet called trading-bot"
+  </Accordion>
+
+  <Accordion title="karen_list_wallets">
+    List all managed wallets with their addresses and names.
+
+    **Parameters:** None
+
+    **Returns:**
+    ```json
+    {
+      "wallets": [
+        {
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "name": "trading-bot",
+          "publicKey": "7xKKzD8qH...",
+          "tags": ["mcp", "external"]
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="karen_balance">
+    Check SOL and SPL token balances for a wallet.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required>
+      Wallet ID returned from `karen_create_wallet`
+    </ParamField>
+
+    **Returns:**
+    ```json
+    {
+      "wallet": "trading-bot",
+      "address": "7xKKzD8qH...",
+      "sol": 1.5,
+      "tokens": [
+        {
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "symbol": "USDC",
+          "uiBalance": "100.50"
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="karen_airdrop">
+    Request SOL from the devnet faucet. **Devnet only** — max 2 SOL per request.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required>
+      Wallet ID to fund
+    </ParamField>
+    <ParamField path="amount" type="number" required>
+      Amount of SOL to request (max 2)
+    </ParamField>
+
+    **Example:**
+    > "Airdrop 2 SOL to my trading-bot wallet"
+  </Accordion>
+</AccordionGroup>
+
+### Transactions
+
+<AccordionGroup>
+  <Accordion title="karen_transfer">
+    Send SOL from a managed wallet to any Solana address.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required>
+      Source wallet ID
+    </ParamField>
+    <ParamField path="to" type="string" required>
+      Recipient Solana address (base58)
+    </ParamField>
+    <ParamField path="amount" type="number" required>
+      Amount of SOL to send
+    </ParamField>
+
+    **Returns:**
+    ```json
+    {
+      "status": "confirmed",
+      "signature": "5Kn8fG...",
+      "guardrails": ["spending_limit_check"]
+    }
+    ```
+
+    <Warning>
+      Transfers are subject to guardrails:
+      - Max 2 SOL per transaction (default)
+      - Max 5 transactions per minute
+      - Daily spending limit of 10 SOL
+    </Warning>
+  </Accordion>
+
+  <Accordion title="karen_swap">
+    Swap tokens using Jupiter DEX aggregator.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required>
+      Wallet ID to swap from
+    </ParamField>
+    <ParamField path="inputToken" type="string" required>
+      Token to sell (e.g., "SOL", "USDC", or mint address)
+    </ParamField>
+    <ParamField path="outputToken" type="string" required>
+      Token to buy (e.g., "USDC", "BONK")
+    </ParamField>
+    <ParamField path="amount" type="number" required>
+      Amount of input token to swap
+    </ParamField>
+    <ParamField path="slippageBps" type="number" default="50">
+      Max slippage in basis points (50 = 0.5%)
+    </ParamField>
+
+    **Example:**
+    > "Swap 0.5 SOL for USDC with 1% slippage"
+  </Accordion>
+
+  <Accordion title="karen_tx_history">
+    Get transaction history for a wallet.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string">
+      Wallet ID (optional — omit for all wallets)
+    </ParamField>
+    <ParamField path="limit" type="number" default="20">
+      Number of transactions to return
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+### DeFi: Token Launch
+
+<AccordionGroup>
+  <Accordion title="karen_launch_token">
+    Create a new SPL token with initial supply. You become the mint and freeze authority.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="name" type="string" required>
+      Token name (e.g., "Agent Coin")
+    </ParamField>
+    <ParamField path="symbol" type="string" required>
+      Token ticker symbol (e.g., "AGT")
+    </ParamField>
+    <ParamField path="decimals" type="number" default="9">
+      Decimal places
+    </ParamField>
+    <ParamField path="initialSupply" type="number" default="1000000">
+      Initial supply in whole units
+    </ParamField>
+
+    **Returns:**
+    ```json
+    {
+      "name": "Agent Coin",
+      "symbol": "AGT",
+      "mint": "7xKKzD8qH...",
+      "supply": 1000000,
+      "signature": "5Kn8fG..."
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="karen_mint_supply">
+    Mint additional tokens for a token you created. Requires mint authority.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="mint" type="string" required>
+      Token mint address
+    </ParamField>
+    <ParamField path="amount" type="number" required>
+      Amount to mint
+    </ParamField>
+    <ParamField path="decimals" type="number" default="9" />
+  </Accordion>
+
+  <Accordion title="karen_revoke_authority">
+    Permanently revoke mint or freeze authority on a token. **IRREVERSIBLE.**
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="mint" type="string" required />
+    <ParamField path="authorityType" type="string" default="mint">
+      "mint" or "freeze"
+    </ParamField>
+
+    <Warning>
+      This action is **permanent and irreversible**. Once revoked, you cannot mint new tokens or freeze accounts.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+### DeFi: Staking
+
+<AccordionGroup>
+  <Accordion title="karen_stake">
+    Stake SOL by delegating to a Solana validator.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="amount" type="number" required>
+      SOL to stake
+    </ParamField>
+    <ParamField path="validator" type="string">
+      Validator vote account (optional — uses default devnet validator)
+    </ParamField>
+
+    **Returns:**
+    ```json
+    {
+      "stakeAccount": "9xYz...",
+      "amount": 1.0,
+      "validator": "BeachiopjxQxL7CaHNSZsynRdj6vY5vCeaTXGKqfCZTP",
+      "signature": "5Kn8fG..."
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="karen_unstake">
+    Deactivate a stake account. After 1 epoch (~2 days), you can withdraw.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="stakeAccount" type="string" required>
+      Stake account public key
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="karen_withdraw_stake">
+    Withdraw SOL from a fully deactivated stake account.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="stakeAccount" type="string" required />
+  </Accordion>
+
+  <Accordion title="karen_list_stakes">
+    List all stake accounts for a wallet.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+
+    **Returns:**
+    ```json
+    {
+      "stakes": [
+        {
+          "address": "9xYz...",
+          "solBalance": 1.0,
+          "state": "active",
+          "voter": "BeachiopjxQxL7CaHNSZsynRdj6vY5vCeaTXGKqfCZTP"
+        }
+      ]
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### DeFi: Token Account Operations
+
+<AccordionGroup>
+  <Accordion title="karen_burn">
+    Burn (destroy) SPL tokens from your wallet.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="mint" type="string" required />
+    <ParamField path="amount" type="number" required />
+  </Accordion>
+
+  <Accordion title="karen_close_account">
+    Close an empty token account to reclaim rent SOL (~0.002 SOL).
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="mint" type="string" required />
+  </Accordion>
+
+  <Accordion title="karen_wrap_sol">
+    Convert SOL to Wrapped SOL (wSOL) for DeFi interactions.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+    <ParamField path="amount" type="number" required />
+  </Accordion>
+
+  <Accordion title="karen_unwrap_sol">
+    Convert all wSOL back to native SOL.
+
+    **Parameters:**
+    <ParamField path="walletId" type="string" required />
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Usage Examples
+
+### In Claude Desktop
+
+Once configured, you can use natural language to interact with Karen:
+
+<Tabs>
+  <Tab title="Create & Fund Wallet">
+    **You:** Create a new wallet called "trading-agent" and fund it with 2 SOL
+
+    **Claude:** I'll create the wallet and request an airdrop.
+
+    *Claude calls:*
+    1. `karen_create_wallet({"name": "trading-agent"})`
+    2. `karen_airdrop({"walletId": "...", "amount": 2})`
+
+    **Claude:** Done! Your wallet "trading-agent" is funded with 2 SOL.
+  </Tab>
+
+  <Tab title="Token Swap">
+    **You:** Swap 0.5 SOL for USDC
+
+    **Claude:** I'll execute the swap using Jupiter DEX.
+
+    *Claude calls:*
+    1. `karen_balance({"walletId": "..."})`
+    2. `karen_swap({"walletId": "...", "inputToken": "SOL", "outputToken": "USDC", "amount": 0.5})`
+
+    **Claude:** Swapped 0.5 SOL for 19.23 USDC.
+  </Tab>
+
+  <Tab title="Launch Token">
+    **You:** Create a token called "Bot Coin" with symbol BTC, 1M initial supply
+
+    **Claude:** I'll launch your token.
+
+    *Claude calls:*
+    `karen_launch_token({"walletId": "...", "name": "Bot Coin", "symbol": "BTC", "initialSupply": 1000000})`
+
+    **Claude:** Token launched! Mint address: 7xKKz... (1,000,000 BTC minted to your wallet)
+  </Tab>
+</Tabs>
+
+---
+
+## Security & Guardrails
+
+All MCP tools pass through Karen's guardrails before execution:
+
+<CardGroup cols={2}>
+  <Card title="Spending Limits" icon="dollar-sign">
+    - Max 2 SOL per transaction
+    - Daily cap of 10 SOL
+  </Card>
+  <Card title="Rate Limiting" icon="gauge">
+    - Max 5 transactions per minute
+  </Card>
+  <Card title="Program Whitelist" icon="shield">
+    - Only approved Solana programs
+    - System, Token, Jupiter, Staking
+  </Card>
+  <Card title="Audit Logging" icon="clipboard-list">
+    - All transactions logged
+    - Full history available via `karen_tx_history`
+  </Card>
+</CardGroup>
+
+<Warning>
+  The default password is `karen-dev`. **Change this in production** by setting `KEYSTORE_PASSWORD` in your environment.
+</Warning>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="MCP server not showing in Claude Desktop">
+    1. Check the config file location for your OS
+    2. Verify the path to `server.ts` is absolute
+    3. Restart Claude Desktop completely
+    4. Check logs: `~/Library/Logs/Claude/mcp*.log` (macOS)
+  </Accordion>
+
+  <Accordion title="Airdrop fails with 'rate limit exceeded'">
+    Devnet faucet has rate limits. Wait 1-2 minutes and try again.
+  </Accordion>
+
+  <Accordion title="Transaction blocked by guardrails">
+    Check the error message in the tool response. Common causes:
+    - Amount exceeds `maxSolPerTransaction` (2 SOL default)
+    - Daily spending limit reached
+    - Rate limit exceeded (5 tx/min)
+
+    Adjust limits in `src/core/transaction/guardrails.ts` if needed.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST API" icon="server" href="/integration/rest-api">
+    Integrate Karen via HTTP endpoints
+  </Card>
+  <Card title="TypeScript SDK" icon="code" href="/integration/sdk">
+    Use Karen as a library in your Node.js app
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference/wallets">
+    Detailed endpoint documentation
+  </Card>
+  <Card title="Guardrails" icon="shield" href="/core-concepts/security">
+    Configure security policies
+  </Card>
+</CardGroup>

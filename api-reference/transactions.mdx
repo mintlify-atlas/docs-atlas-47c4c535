@@ -1,0 +1,155 @@
+---
+title: 'Transaction History'
+description: 'Query transaction history and monitor blockchain activity'
+---
+
+## Get Wallet Transactions
+
+Retrieve transaction history for a specific wallet.
+
+<RequestExample>
+```bash cURL
+curl "https://api.karen.dev/api/v1/wallets/WALLET_ID/transactions?limit=50" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ParamField query="limit" type="number" default="50">
+  Maximum number of transactions to return
+</ParamField>
+
+<ResponseField name="transactions" type="array">
+  Array of transaction records
+  <Expandable title="Transaction object">
+    <ResponseField name="id" type="string">
+      Unique transaction record ID
+    </ResponseField>
+    <ResponseField name="walletId" type="string">
+      Wallet that initiated the transaction
+    </ResponseField>
+    <ResponseField name="agentId" type="string">
+      Agent that initiated the transaction (if applicable)
+    </ResponseField>
+    <ResponseField name="type" type="string">
+      Transaction type: transfer, swap, airdrop, token_launch, stake, etc.
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Transaction status: pending, confirmed, failed, or blocked
+    </ResponseField>
+    <ResponseField name="signature" type="string">
+      Solana transaction signature
+    </ResponseField>
+    <ResponseField name="details" type="object">
+      Transaction-specific details (amounts, addresses, tokens, etc.)
+    </ResponseField>
+    <ResponseField name="guardrailsApplied" type="array">
+      List of guardrail checks that were applied
+    </ResponseField>
+    <ResponseField name="timestamp" type="string">
+      ISO 8601 timestamp
+    </ResponseField>
+    <ResponseField name="error" type="string">
+      Error message if transaction failed
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Get All Transactions
+
+Retrieve transaction history across all wallets.
+
+<RequestExample>
+```bash cURL
+curl "https://api.karen.dev/api/v1/transactions?limit=100" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ParamField query="limit" type="number" default="50">
+  Maximum number of transactions to return
+</ParamField>
+
+<ResponseField name="transactions" type="array">
+  Array of transaction records from all wallets
+</ResponseField>
+
+---
+
+## Transaction Types
+
+The following transaction types are tracked:
+
+- `transfer` - SOL transfers
+- `swap` - Token swaps via Jupiter
+- `airdrop` - Devnet/testnet airdrops
+- `token_transfer` - SPL token transfers
+- `token_launch` - New token creation
+- `mint_supply` - Minting additional token supply
+- `revoke_authority` - Revoking mint/freeze authority
+- `stake` - SOL staking
+- `unstake` - Stake deactivation
+- `withdraw_stake` - Stake withdrawal
+- `burn` - Token burning
+- `close_account` - Closing token accounts
+- `wrap_sol` - Wrapping SOL to wSOL
+- `unwrap_sol` - Unwrapping wSOL to SOL
+- `freeze` - Freezing token accounts
+- `thaw` - Unfreezing token accounts
+- `other` - Other transaction types
+
+---
+
+## Transaction Status
+
+- `pending` - Transaction submitted, awaiting confirmation
+- `confirmed` - Transaction confirmed on-chain
+- `failed` - Transaction failed to execute
+- `blocked` - Transaction blocked by guardrails
+
+---
+
+## Example Response
+
+```json
+{
+  "transactions": [
+    {
+      "id": "tx_abc123",
+      "walletId": "wallet_xyz",
+      "agentId": "agent_trader",
+      "type": "swap",
+      "status": "confirmed",
+      "signature": "5Kj...",
+      "details": {
+        "inputToken": "So11111111111111111111111111111111111111112",
+        "outputToken": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "inputAmount": 1.0,
+        "outputAmount": 150.25,
+        "slippageBps": 50
+      },
+      "guardrailsApplied": [
+        "amount_limit",
+        "rate_limit",
+        "program_whitelist"
+      ],
+      "timestamp": "2024-03-15T10:30:00Z"
+    },
+    {
+      "id": "tx_def456",
+      "walletId": "wallet_xyz",
+      "type": "transfer",
+      "status": "confirmed",
+      "signature": "3Xy...",
+      "details": {
+        "from": "7xK...",
+        "to": "9mP...",
+        "amount": 0.5
+      },
+      "guardrailsApplied": ["amount_limit"],
+      "timestamp": "2024-03-15T09:15:00Z"
+    }
+  ]
+}
+```

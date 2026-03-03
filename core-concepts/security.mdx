@@ -1,0 +1,637 @@
+---
+title: Security & Guardrails
+description: Transaction guardrails, spending limits, rate limiting, and audit logging
+---
+
+Karen implements multiple layers of security to prevent agents from making unauthorized or excessive transactions.
+
+## Security Architecture
+
+```
+┌─────────────────────────────────────────┐
+│  Agent Decision                         │
+│  "Swap 0.5 SOL for USDC"                │
+└────────────┬────────────────────────────┘
+             ↓
+┌─────────────────────────────────────────┐
+│  Guardrails Validation                  │
+│  ✓ Per-tx limit (0.5 < 2.0 SOL)        │
+│  ✓ Rate limit (1/min < 5/min)          │
+│  ✓ Daily limit (0.5 < 10.0 SOL/day)    │
+│  ✓ Program allowlist (Jupiter OK)      │
+│  ✓ Blocked addresses (none)            │
+└────────────┬────────────────────────────┘
+             ↓
+┌─────────────────────────────────────────┐
+│  Transaction Execution                  │
+│  Build → Sign → Send                    │
+└────────────┬────────────────────────────┘
+             ↓
+┌─────────────────────────────────────────┐
+│  Audit Logging                          │
+│  Record to data/logs/transactions.jsonl │
+└─────────────────────────────────────────┘
+```
+
+## Guardrails
+
+The `Guardrails` class (`src/core/transaction/guardrails.ts`) enforces security policies on all transactions.
+
+### Configuration
+
+**GuardrailConfig Type** (`src/core/types.ts:109-130`):
+
+```typescript
+export interface GuardrailConfig {
+  maxSolPerTransaction: number        // Max SOL per single transaction
+  maxTransactionsPerMinute: number    // Rate limit
+  dailySpendingLimitSol: number       // Max SOL spent per 24 hours
+  allowedPrograms: string[]           // Whitelist of Solana programs
+  blockedAddresses: string[]          // Blacklist of recipient addresses
+}
+
+export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
+  maxSolPerTransaction: 2.0,
+  maxTransactionsPerMinute: 5,
+  dailySpendingLimitSol: 10.0,
+  allowedPrograms: [
+    '11111111111111111111111111111111',           // System Program
+    'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // SPL Token Program
+    'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL', // Associated Token Program
+    'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',  // Jupiter v6
+    'Stake11111111111111111111111111111111111111',  // Stake Program
+    'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s',  // Token Metadata Program
+  ],
+  blockedAddresses: [],
+}
+```
+
+### Validation Logic
+
+**Implementation** (`src/core/transaction/guardrails.ts:29-103`):
+
+```typescript
+export class Guardrails {
+  private config: GuardrailConfig
+  private windows: Map<string, TransactionWindow> = new Map()
+
+  validate(
+    walletId: string,
+    amountSol: number,
+    programIds: string[] = [],
+    destinationAddress?: string,
+  ): { allowed: boolean; reason?: string; guardrails: string[] } {
+    const applied: string[] = []
+
+    // 1. Spending limit per transaction
+    applied.push('max_per_tx')
+    if (amountSol > this.config.maxSolPerTransaction) {
+      return {
+        allowed: false,
+        reason: `Amount ${amountSol} SOL exceeds per-transaction limit of ${this.config.maxSolPerTransaction} SOL`,
+        guardrails: applied,
+      }
+    }
+
+    // 2. Rate limiting
+    applied.push('rate_limit')
+    const window = this.getWindow(walletId)
+    const now = Date.now()
+    const recentTxCount = window.timestamps.filter(
+      (t) => now - t < 60_000,
+    ).length
+
+    if (recentTxCount >= this.config.maxTransactionsPerMinute) {
+      return {
+        allowed: false,
+        reason: `Rate limit exceeded: ${recentTxCount}/${this.config.maxTransactionsPerMinute} transactions per minute`,
+        guardrails: applied,
+      }
+    }
+
+    // 3. Daily spending limit
+    applied.push('daily_limit')
+    this.resetDailyIfNeeded(window)
+    if (window.dailySpend + amountSol > this.config.dailySpendingLimitSol) {
+      return {
+        allowed: false,
+        reason: `Daily spending limit exceeded: ${window.dailySpend.toFixed(4)} + ${amountSol} > ${this.config.dailySpendingLimitSol} SOL`,
+        guardrails: applied,
+      }
+    }
+
+    // 4. Program allowlist
+    if (this.config.allowedPrograms.length > 0 && programIds.length > 0) {
+      applied.push('program_allowlist')
+      const disallowed = programIds.filter(
+        (p) => !this.config.allowedPrograms.includes(p),
+      )
+      if (disallowed.length > 0) {
+        return {
+          allowed: false,
+          reason: `Programs not in allowlist: ${disallowed.join(', ')}`,
+          guardrails: applied,
+        }
+      }
+    }
+
+    // 5. Blocked addresses
+    if (
+      destinationAddress &&
+      this.config.blockedAddresses.includes(destinationAddress)
+    ) {
+      applied.push('blocked_address')
+      return {
+        allowed: false,
+        reason: `Destination address is blocked: ${destinationAddress}`,
+        guardrails: applied,
+      }
+    }
+
+    return { allowed: true, guardrails: applied }
+  }
+
+  recordTransaction(walletId: string, amountSol: number): void {
+    const window = this.getWindow(walletId)
+    window.timestamps.push(Date.now())
+    window.dailySpend += amountSol
+  }
+}
+```
+
+### Guardrail Details
+
+<Accordion title="1. Per-Transaction Spending Limit">
+  **Purpose:** Prevent a single transaction from spending too much SOL.
+
+  **Default:** 2.0 SOL per transaction
+
+  **Example:**
+  ```typescript
+  const guardrails = new Guardrails({ maxSolPerTransaction: 1.0 })
+
+  const result = guardrails.validate('wallet-id', 1.5, [], 'recipient-address')
+  console.log(result)
+  // {
+  //   allowed: false,
+  //   reason: 'Amount 1.5 SOL exceeds per-transaction limit of 1.0 SOL',
+  //   guardrails: ['max_per_tx']
+  // }
+  ```
+
+  **Source:** `src/core/transaction/guardrails.ts:38-45`
+</Accordion>
+
+<Accordion title="2. Rate Limiting (Transactions Per Minute)">
+  **Purpose:** Prevent agents from spamming transactions.
+
+  **Default:** 5 transactions per minute
+
+  **Implementation:**
+  - Tracks timestamps of recent transactions in a sliding 60-second window
+  - Rejects new transactions if count exceeds limit
+  - Old timestamps (>5 minutes) are automatically pruned
+
+  **Example:**
+  ```typescript
+  const guardrails = new Guardrails({ maxTransactionsPerMinute: 3 })
+
+  // Agent sends 3 transactions in 30 seconds
+  guardrails.recordTransaction('wallet-id', 0.1)
+  guardrails.recordTransaction('wallet-id', 0.2)
+  guardrails.recordTransaction('wallet-id', 0.3)
+
+  // 4th transaction is blocked
+  const result = guardrails.validate('wallet-id', 0.1, [])
+  console.log(result)
+  // {
+  //   allowed: false,
+  //   reason: 'Rate limit exceeded: 3/3 transactions per minute',
+  //   guardrails: ['max_per_tx', 'rate_limit']
+  // }
+  ```
+
+  **Source:** `src/core/transaction/guardrails.ts:47-61`
+</Accordion>
+
+<Accordion title="3. Daily Spending Limit">
+  **Purpose:** Cap the total SOL an agent can spend in 24 hours.
+
+  **Default:** 10.0 SOL per day
+
+  **Implementation:**
+  - Tracks cumulative spending per wallet
+  - Resets every 24 hours (86,400,000 ms)
+  - Prevents agents from draining wallets over time
+
+  **Example:**
+  ```typescript
+  const guardrails = new Guardrails({ dailySpendingLimitSol: 5.0 })
+
+  // Agent has already spent 4.8 SOL today
+  guardrails.recordTransaction('wallet-id', 4.8)
+
+  // Attempting to spend another 0.5 SOL is blocked
+  const result = guardrails.validate('wallet-id', 0.5, [])
+  console.log(result)
+  // {
+  //   allowed: false,
+  //   reason: 'Daily spending limit exceeded: 4.8000 + 0.5 > 5.0 SOL',
+  //   guardrails: ['max_per_tx', 'rate_limit', 'daily_limit']
+  // }
+  ```
+
+  **Source:** `src/core/transaction/guardrails.ts:63-72`
+</Accordion>
+
+<Accordion title="4. Program Allowlist">
+  **Purpose:** Only allow transactions with approved Solana programs.
+
+  **Default Allowlist:**
+  - System Program (native SOL transfers)
+  - SPL Token Program (token transfers)
+  - Associated Token Program (token account creation)
+  - Jupiter v6 (DEX aggregator)
+  - Stake Program (native staking)
+  - Token Metadata Program (NFT metadata)
+
+  **Implementation:**
+  - Transaction engine passes program IDs to guardrails
+  - Rejects if any program is not in the allowlist
+  - Empty allowlist = all programs allowed (not recommended)
+
+  **Example:**
+  ```typescript
+  const guardrails = new Guardrails({
+    allowedPrograms: [
+      '11111111111111111111111111111111',  // System Program
+      'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',  // Jupiter
+    ],
+  })
+
+  // Agent tries to interact with an unknown program
+  const result = guardrails.validate(
+    'wallet-id',
+    0.5,
+    ['UNKNOWNProgramXXXXXXXXXXXXXXXXXXXXXXXXX'],
+  )
+  console.log(result)
+  // {
+  //   allowed: false,
+  //   reason: 'Programs not in allowlist: UNKNOWNProgramXXXXXXXXXXXXXXXXXXXXXXXXX',
+  //   guardrails: ['max_per_tx', 'rate_limit', 'daily_limit', 'program_allowlist']
+  // }
+  ```
+
+  **Source:** `src/core/transaction/guardrails.ts:74-87`
+</Accordion>
+
+<Accordion title="5. Blocked Addresses">
+  **Purpose:** Prevent transfers to specific addresses (e.g., known scam addresses).
+
+  **Default:** Empty (no addresses blocked)
+
+  **Example:**
+  ```typescript
+  const guardrails = new Guardrails({
+    blockedAddresses: [
+      'ScamAddress111111111111111111111111111111',
+      'MaliciousWallet222222222222222222222222222',
+    ],
+  })
+
+  const result = guardrails.validate(
+    'wallet-id',
+    0.5,
+    [],
+    'ScamAddress111111111111111111111111111111',
+  )
+  console.log(result)
+  // {
+  //   allowed: false,
+  //   reason: 'Destination address is blocked: ScamAddress111111111111111111111111111111',
+  //   guardrails: ['max_per_tx', 'rate_limit', 'daily_limit', 'blocked_address']
+  // }
+  ```
+
+  **Source:** `src/core/transaction/guardrails.ts:89-100`
+</Accordion>
+
+### Dynamic Configuration
+
+**Update Guardrails at Runtime:**
+
+```typescript
+const guardrails = new Guardrails()
+
+// Check current config
+console.log(guardrails.getConfig())
+
+// Update specific limits
+guardrails.updateConfig({
+  maxSolPerTransaction: 5.0,
+  dailySpendingLimitSol: 20.0,
+})
+
+// Add a program to the allowlist
+const currentConfig = guardrails.getConfig()
+guardrails.updateConfig({
+  allowedPrograms: [...currentConfig.allowedPrograms, 'NewProgramID'],
+})
+```
+
+**Source:** `src/core/transaction/guardrails.ts:119-130`
+
+### Spending Info
+
+Query current spending status for a wallet:
+
+```typescript
+const info = guardrails.getSpendingInfo('wallet-id')
+console.log(info)
+// {
+//   recentTxCount: 2,         // Transactions in the last minute
+//   dailySpend: 3.5,          // SOL spent today
+//   dailyRemaining: 6.5,      // SOL remaining for today
+//   perTxLimit: 2.0           // Max per transaction
+// }
+```
+
+**Source:** `src/core/transaction/guardrails.ts:133-157`
+
+## Transaction Engine Integration
+
+The `TransactionEngine` automatically validates all transactions against guardrails.
+
+**Example: SOL Transfer** (`src/core/transaction/transaction-engine.ts:51-116`):
+
+```typescript
+async transferSol(
+  walletId: string,
+  toAddress: string,
+  amountSol: number,
+  agentId?: string,
+): Promise<TransactionRecord> {
+  const record = this.createRecord(walletId, 'transfer', agentId, {
+    to: toAddress,
+    amount: amountSol,
+    token: 'SOL',
+  })
+
+  try {
+    // Validate with guardrails
+    const validation = this.guardrails.validate(
+      walletId,
+      amountSol,
+      [SystemProgram.programId.toBase58()],
+      toAddress,
+    )
+    record.guardrailsApplied = validation.guardrails
+
+    if (!validation.allowed) {
+      record.status = 'blocked'
+      record.error = validation.reason
+      this.logger.logTransaction(record)
+      this.logger.logEvent({ type: 'transaction:blocked', data: record })
+      return record  // Transaction blocked
+    }
+
+    // Build and send transaction
+    const keypair = await this.walletManager.getKeypair(walletId)
+    const connection = getConnection()
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: keypair.publicKey,
+        toPubkey: new PublicKey(toAddress),
+        lamports: Math.round(amountSol * LAMPORTS_PER_SOL),
+      }),
+    )
+
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [keypair],
+    )
+
+    // Record success
+    record.status = 'confirmed'
+    record.signature = signature
+    this.guardrails.recordTransaction(walletId, amountSol)
+
+    this.logger.logTransaction(record)
+    this.logger.logEvent({ type: 'transaction:confirmed', data: record })
+    return record
+  } catch (error: any) {
+    record.status = 'failed'
+    record.error = error.message
+    this.logger.logTransaction(record)
+    return record
+  }
+}
+```
+
+<Info>
+  **All transactions** (SOL transfers, token swaps, staking, etc.) go through guardrail validation. A blocked transaction is logged but never sent to the blockchain.
+</Info>
+
+## Audit Logging
+
+Karen logs all transactions and agent decisions to append-only JSONL files.
+
+### AuditLogger Class
+
+**Implementation** (`src/core/audit-logger.ts:12-108`):
+
+```typescript
+export class AuditLogger {
+  private logDir: string  // Default: data/logs/
+
+  logTransaction(record: TransactionRecord): void {
+    const file = path.join(this.logDir, 'transactions.jsonl')
+    fs.appendFileSync(file, JSON.stringify(record) + '\n')
+  }
+
+  logDecision(decision: AgentDecision): void {
+    const file = path.join(this.logDir, `agent-${decision.agentId}.jsonl`)
+    fs.appendFileSync(file, JSON.stringify(decision) + '\n')
+  }
+
+  logEvent(event: KarenEvent): void {
+    const file = path.join(this.logDir, 'events.jsonl')
+    const entry = { ...event, timestamp: new Date().toISOString() }
+    fs.appendFileSync(file, JSON.stringify(entry) + '\n')
+  }
+
+  getTransactions(walletId?: string, limit: number = 50): TransactionRecord[] {
+    // Read from transactions.jsonl and filter by walletId
+  }
+
+  getDecisions(agentId: string, limit: number = 50): AgentDecision[] {
+    // Read from agent-{agentId}.jsonl
+  }
+}
+```
+
+### Log Files
+
+<Tabs>
+  <Tab title="transactions.jsonl">
+    **Location:** `data/logs/transactions.jsonl`
+
+    **Format:** One JSON object per line (JSONL)
+
+    **Example:**
+    ```json
+    {"id":"uuid-1","walletId":"wallet-id","agentId":"agent-1","type":"transfer","status":"confirmed","signature":"5KJh3...","details":{"to":"HN7cA...","amount":0.5,"token":"SOL"},"guardrailsApplied":["max_per_tx","rate_limit","daily_limit"],"timestamp":"2026-03-03T12:00:00.000Z"}
+    {"id":"uuid-2","walletId":"wallet-id","agentId":"agent-1","type":"swap","status":"blocked","error":"Amount 5 SOL exceeds per-transaction limit of 2.0 SOL","details":{"inputToken":"SOL","outputToken":"USDC","amount":5},"guardrailsApplied":["max_per_tx"],"timestamp":"2026-03-03T12:01:00.000Z"}
+    ```
+
+    **Fields:**
+    - `id` - Unique transaction ID
+    - `walletId` - Wallet that initiated the transaction
+    - `agentId` - Agent that made the decision (if applicable)
+    - `type` - Transaction type (transfer, swap, stake, etc.)
+    - `status` - `pending`, `confirmed`, `failed`, or `blocked`
+    - `signature` - Solana transaction signature (if confirmed)
+    - `details` - Transaction-specific details
+    - `guardrailsApplied` - List of guardrails that were checked
+    - `error` - Error message (if failed or blocked)
+    - `timestamp` - ISO 8601 timestamp
+  </Tab>
+
+  <Tab title="agent-{agentId}.jsonl">
+    **Location:** `data/logs/agent-{agentId}.jsonl`
+
+    **Format:** One decision per line
+
+    **Example:**
+    ```json
+    {"agentId":"agent-1","cycle":1,"observations":{"wallet":{"name":"DCA-Bot-wallet","address":"HN7cA..."},"balances":{"sol":0.5,"tokens":[]}},"reasoning":"Balance is low, requesting airdrop","action":{"skill":"airdrop","params":{"amount":2}},"outcome":"Successfully airdropped 2 SOL","timestamp":"2026-03-03T12:00:00.000Z"}
+    {"agentId":"agent-1","cycle":2,"observations":{"wallet":{"name":"DCA-Bot-wallet","address":"HN7cA..."},"balances":{"sol":2.5,"tokens":[]}},"reasoning":"Executing DCA: swap 0.5 SOL for USDC","action":{"skill":"swap","params":{"inputToken":"SOL","outputToken":"USDC","amount":0.5}},"outcome":"Swap successful","timestamp":"2026-03-03T12:00:30.000Z"}
+    ```
+
+    **Fields:**
+    - `agentId` - Agent that made the decision
+    - `cycle` - Decision cycle number
+    - `observations` - Current state (wallet, balances, recent txs)
+    - `reasoning` - LLM's reasoning for the decision
+    - `action` - Skill invoked (if any)
+    - `outcome` - Result of the action
+    - `timestamp` - ISO 8601 timestamp
+  </Tab>
+
+  <Tab title="events.jsonl">
+    **Location:** `data/logs/events.jsonl`
+
+    **Format:** One event per line
+
+    **Example:**
+    ```json
+    {"type":"agent:started","data":{"agentId":"agent-1"},"timestamp":"2026-03-03T12:00:00.000Z"}
+    {"type":"transaction:confirmed","data":{"id":"uuid-1","walletId":"wallet-id","type":"transfer","signature":"5KJh3..."},"timestamp":"2026-03-03T12:00:05.000Z"}
+    {"type":"transaction:blocked","data":{"id":"uuid-2","walletId":"wallet-id","error":"Rate limit exceeded"},"timestamp":"2026-03-03T12:00:10.000Z"}
+    {"type":"agent:stopped","data":{"agentId":"agent-1"},"timestamp":"2026-03-03T12:05:00.000Z"}
+    ```
+
+    **Event Types:**
+    - `wallet:created`
+    - `transaction:sent`, `transaction:confirmed`, `transaction:failed`, `transaction:blocked`
+    - `agent:started`, `agent:stopped`, `agent:decision`, `agent:error`
+  </Tab>
+</Tabs>
+
+### Event Streaming
+
+Subscribe to real-time events:
+
+```typescript
+const logger = new AuditLogger()
+
+const unsubscribe = logger.onEvent((event) => {
+  if (event.type === 'transaction:blocked') {
+    console.warn('Transaction blocked:', event.data)
+    // Send alert, update dashboard, etc.
+  }
+})
+
+// Later: unsubscribe()
+```
+
+**Source:** `src/core/audit-logger.ts:64-69`
+
+## Best Practices
+
+<Note>
+  1. **Start Conservative:** Use low spending limits for new agents (e.g., 0.5 SOL per tx, 2 SOL per day)
+  2. **Monitor Logs:** Regularly review `data/logs/` for blocked transactions and agent errors
+  3. **Allowlist Programs:** Only add programs you trust to the allowlist
+  4. **Test on Devnet:** Always test agent strategies on devnet before using real funds
+  5. **Rotate Wallets:** For production, create new derived wallets periodically to limit exposure
+  6. **Alert on Blocks:** Set up alerts for `transaction:blocked` events to catch unexpected behavior
+</Note>
+
+<Warning>
+  **Guardrails are not foolproof.** They protect against common mistakes and runaway agents, but you should still:
+  - Review agent strategies before deployment
+  - Monitor agent activity regularly
+  - Use testnet/devnet for experimentation
+  - Never deploy agents with unrestricted access to mainnet wallets
+</Warning>
+
+## Encryption at Rest
+
+In addition to guardrails, Karen encrypts all private keys at rest:
+
+- **Algorithm:** AES-256-GCM
+- **Key Derivation:** Scrypt (n=16384, r=8, p=1)
+- **Storage:** `data/keystores/{walletId}.json`
+
+See [Wallets](/core-concepts/wallets) for details.
+
+## TypeScript Types
+
+**TransactionRecord** (`src/core/types.ts:59-70`):
+```typescript
+export interface TransactionRecord {
+  id: string
+  walletId: string
+  agentId?: string
+  type: TransactionType
+  status: TransactionStatus  // 'pending' | 'confirmed' | 'failed' | 'blocked'
+  signature?: string
+  details: TransactionDetails
+  guardrailsApplied: string[]
+  timestamp: string
+  error?: string
+}
+```
+
+**AgentDecision** (`src/core/types.ts:151-159`):
+```typescript
+export interface AgentDecision {
+  agentId: string
+  cycle: number
+  observations: Record<string, unknown>
+  reasoning: string
+  action: SkillInvocation | null
+  outcome?: string
+  timestamp: string
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="diagram-project" href="/core-concepts/architecture">
+    Understand the full system architecture
+  </Card>
+  <Card title="Wallets" icon="wallet" href="/core-concepts/wallets">
+    Learn about wallet encryption and HD derivation
+  </Card>
+  <Card title="Agents" icon="robot" href="/core-concepts/agents">
+    Explore the agent runtime and decision-making
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create a secure agent in 5 minutes
+  </Card>
+</CardGroup>

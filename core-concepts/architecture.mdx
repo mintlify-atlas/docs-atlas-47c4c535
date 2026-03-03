@@ -1,0 +1,269 @@
+---
+title: System Architecture
+description: Understand Karen's architecture, component layers, and integration methods
+---
+
+Karen is built as a multi-layer system that enables both autonomous AI agents and external integrations to securely manage Solana wallets.
+
+## Architecture Overview
+
+The system follows a clean separation of concerns across four layers:
+
+```
+External Agents (OpenClaw, LangChain, etc.)
+          │
+    ┌─────┴─────┐
+    │ MCP Server │──── REST API
+    └─────┬─────┘
+          │
+    ┌─────┴──────────────┐
+    │    Agent Runtime    │
+    │ Observe→Think→Act  │
+    │    (LLM-powered)   │
+    └─────┬──────────────┘
+          │
+    ┌─────┴──────────────┐
+    │   Core Engine       │
+    │ Wallet Manager      │
+    │ Transaction Engine  │
+    │ Security Guardrails │
+    └─────┬──────────────┘
+          │
+    Solana Devnet RPC
+```
+
+## Layer Breakdown
+
+<Accordion title="Layer 1: Integration Layer">
+  Karen provides three ways for external systems to interact with the wallet infrastructure:
+
+  **MCP Server**
+  - Model Context Protocol server for AI assistants
+  - Exposes 17 tools for wallet operations
+  - Used by Claude Desktop, OpenClaw, and other MCP-compatible agents
+  - Located in `src/mcp/server.ts`
+
+  **REST API**
+  - HTTP endpoints for programmatic access
+  - Bearer token authentication
+  - Rate limiting and spending caps per API key
+  - Located in `src/api/server.ts`
+
+  **Direct SDK**
+  - Import Karen's core modules directly into Node.js applications
+  - Full programmatic control over all components
+  - Best for building custom agent platforms
+</Accordion>
+
+<Accordion title="Layer 2: Agent Runtime">
+  The autonomous agent layer implements a continuous decision-making loop:
+
+  **Core Loop: Observe → Think → Act → Remember**
+  1. **Observe** - Gather current wallet state, balances, recent transactions
+  2. **Think** - Send context to LLM with available skills and strategy
+  3. **Act** - Execute the chosen skill via the skill registry
+  4. **Remember** - Persist decision and outcome to memory for future context
+
+  **Components:**
+  - `AgentRuntime` (`src/agent/runtime.ts`) - Main agent execution loop
+  - `Orchestrator` (`src/agent/orchestrator.ts`) - Manages multiple concurrent agents
+  - `MemoryStore` (`src/agent/memory/memory-store.ts`) - Persistent decision history
+  - `SkillRegistry` (`src/agent/skills/index.ts`) - 17 pluggable agent capabilities
+</Accordion>
+
+<Accordion title="Layer 3: Core Engine">
+  The foundational wallet and transaction infrastructure:
+
+  **Wallet Manager** (`src/core/wallet/wallet-manager.ts`)
+  - Create wallets with HD derivation (BIP-44)
+  - Secure keystore encryption (AES-256-GCM)
+  - Balance queries for SOL and SPL tokens
+
+  **Transaction Engine** (`src/core/transaction/transaction-engine.ts`)
+  - Build, sign, and send transactions
+  - Automatic guardrail validation
+  - Comprehensive audit logging
+
+  **Security Guardrails** (`src/core/transaction/guardrails.ts`)
+  - Per-transaction spending limits
+  - Rate limiting (transactions per minute)
+  - Daily spending caps
+  - Program allowlists
+  - Address blocklists
+
+  **Audit Logger** (`src/core/audit-logger.ts`)
+  - JSONL append-only logs for all transactions
+  - Agent decision tracking
+  - Event streaming for monitoring
+</Accordion>
+
+<Accordion title="Layer 4: Protocol Adapters">
+  High-level interfaces for DeFi protocols:
+
+  - **JupiterAdapter** - Token swaps via Jupiter DEX aggregator
+  - **TokenLauncherAdapter** - Create and manage SPL tokens
+  - **StakingAdapter** - Native SOL staking to validators
+  - **SplTokenAdapter** - SPL token operations (burn, close, freeze)
+  - **WrappedSolAdapter** - Wrap/unwrap SOL to wSOL
+
+  Located in `src/protocols/`
+</Accordion>
+
+## Directory Structure
+
+```
+agentic-wallet/
+├── src/
+│   ├── core/                 # Core wallet & transaction infrastructure
+│   │   ├── wallet/           # WalletManager, Keystore, HD derivation
+│   │   ├── transaction/      # TransactionEngine, Guardrails
+│   │   ├── solana/           # RPC connection management
+│   │   ├── audit-logger.ts   # Transaction & event logging
+│   │   └── types.ts          # TypeScript type definitions
+│   │
+│   ├── agent/                # Autonomous agent runtime
+│   │   ├── llm/              # LLM provider adapters (OpenAI, Anthropic, etc.)
+│   │   ├── skills/           # 17 pluggable agent skills
+│   │   ├── memory/           # Persistent agent memory store
+│   │   ├── runtime.ts        # Agent execution loop
+│   │   └── orchestrator.ts   # Multi-agent management
+│   │
+│   ├── protocols/            # DeFi protocol adapters
+│   │   ├── jupiter.ts        # Jupiter DEX swaps
+│   │   ├── spl-token.ts      # SPL token operations
+│   │   ├── token-launcher.ts # Token creation & minting
+│   │   ├── staking.ts        # Native SOL staking
+│   │   └── wrapped-sol.ts    # wSOL wrapping
+│   │
+│   ├── api/                  # REST API server
+│   ├── mcp/                  # MCP server
+│   └── cli/                  # CLI interface
+│
+├── dashboard/                # Next.js monitoring dashboard
+├── data/                     # Runtime data (keystores, logs, memory)
+│   ├── keystores/            # Encrypted wallet files
+│   ├── logs/                 # Audit logs (JSONL)
+│   └── memory/               # Agent memory (JSON)
+└── SKILLS.md                 # Agent skill reference
+```
+
+## Integration Methods
+
+<Tabs>
+  <Tab title="MCP (Recommended for AI Agents)">
+    The MCP server exposes Karen's capabilities as tools that any MCP-compatible AI assistant can use.
+
+    **Configuration Example (Claude Desktop):**
+    ```json
+    {
+      "mcpServers": {
+        "karen": {
+          "command": "npx",
+          "args": ["tsx", "/path/to/karen/src/mcp/server.ts"]
+        }
+      }
+    }
+    ```
+
+    **Available MCP Tools:**
+    - `karen_create_wallet` - Create a new wallet
+    - `karen_balance` - Check balances
+    - `karen_swap` - Swap tokens via Jupiter
+    - `karen_transfer` - Send SOL or SPL tokens
+    - `karen_launch_token` - Create a new SPL token
+    - `karen_stake` - Stake SOL to validators
+    - ...and 11 more (see [MCP Tools](/api-reference/mcp-tools))
+
+    **Use Case:** Best for one-off operations from Claude, OpenClaw, or other chat-based agents.
+  </Tab>
+
+  <Tab title="REST API">
+    HTTP endpoints for external applications and services.
+
+    **Base URL:** `http://localhost:3001/api/v1`
+
+    **Authentication:**
+    ```bash
+    curl -X POST http://localhost:3001/api/v1/wallets \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"name": "my-wallet"}'
+    ```
+
+    **Key Endpoints:**
+    - `POST /wallets` - Create wallet
+    - `GET /wallets/{id}/balance` - Get balances
+    - `POST /wallets/{id}/swap` - Execute swap
+    - `POST /wallets/{id}/transfer` - Send tokens
+
+    See [REST API Reference](/api-reference/wallets) for full documentation.
+
+    **Use Case:** Best for backend services, trading bots, and non-LLM integrations.
+  </Tab>
+
+  <Tab title="Direct SDK">
+    Import Karen's modules directly into your Node.js/TypeScript application.
+
+    **Installation:**
+    ```bash
+    npm install @your-org/karen
+    ```
+
+    **Example:**
+    ```typescript
+    import { WalletManager, TransactionEngine, Guardrails } from '@your-org/karen'
+
+    const walletManager = new WalletManager('your-password')
+    const guardrails = new Guardrails()
+    const txEngine = new TransactionEngine(walletManager, guardrails, logger)
+
+    // Create a wallet
+    const wallet = await walletManager.createWallet('my-wallet')
+
+    // Transfer SOL
+    const tx = await txEngine.transferSol(
+      wallet.id,
+      'recipientAddress',
+      0.5
+    )
+    ```
+
+    **Use Case:** Best for building custom agent platforms or embedding Karen into existing applications.
+  </Tab>
+</Tabs>
+
+## Data Flow Example
+
+Here's what happens when an agent decides to swap SOL for USDC:
+
+1. **Agent Runtime** observes current wallet state (2 SOL, 0 USDC)
+2. **LLM Provider** receives context + available skills, decides to invoke `swap`
+3. **Skill Registry** executes the `swap` skill with parameters `{inputToken: "SOL", outputToken: "USDC", amount: 0.5}`
+4. **Jupiter Adapter** fetches a quote and builds the swap transaction
+5. **Transaction Engine** validates against guardrails (spending limit, rate limit, program allowlist)
+6. **Wallet Manager** decrypts the keypair to sign the transaction
+7. **Solana RPC** broadcasts the signed transaction
+8. **Audit Logger** records the transaction details
+9. **Memory Store** persists the decision + outcome for future context
+10. Agent proceeds to next cycle
+
+<Info>
+  **All Karen operations run on Solana Devnet** by default. To use mainnet, update the RPC URL in `src/core/solana/connection.ts`.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Wallets" icon="wallet" href="/core-concepts/wallets">
+    Learn about HD derivation, keystore encryption, and wallet management
+  </Card>
+  <Card title="Agents" icon="robot" href="/core-concepts/agents">
+    Understand the agent runtime, LLM integration, and decision-making loop
+  </Card>
+  <Card title="Security" icon="shield" href="/core-concepts/security">
+    Explore guardrails, spending limits, and audit logging
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get Karen running in 5 minutes
+  </Card>
+</CardGroup>

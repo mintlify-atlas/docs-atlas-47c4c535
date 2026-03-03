@@ -1,0 +1,525 @@
+---
+title: Wallet Management
+description: HD derivation, encrypted keystores, and secure wallet operations
+---
+
+Karen's wallet infrastructure provides secure, deterministic wallet generation with AES-256-GCM encryption and BIP-44 hierarchical derivation.
+
+## WalletManager Class
+
+The `WalletManager` class (`src/core/wallet/wallet-manager.ts`) handles all wallet operations:
+
+```typescript
+export class WalletManager {
+  private keystore: Keystore
+  private password: string
+
+  constructor(password: string, keystoreDir?: string) {
+    this.keystore = new Keystore(keystoreDir)
+    this.password = password
+  }
+
+  // Create, import, list, and manage wallets
+  async createWallet(name: string, tags: string[] = []): Promise<WalletInfo>
+  async createDerivedWallet(name: string, mnemonic: string, derivationIndex: number): Promise<WalletInfo>
+  async importWallet(name: string, secretKey: Uint8Array): Promise<WalletInfo>
+  async getKeypair(walletId: string): Promise<Keypair>
+  async getBalances(walletId: string): Promise<WalletBalance>
+}
+```
+
+**Source:** `src/core/wallet/wallet-manager.ts:14-246`
+
+## Wallet Creation Methods
+
+<Tabs>
+  <Tab title="Random Wallet">
+    Create a new wallet with a randomly generated keypair.
+
+    ```typescript
+    const walletManager = new WalletManager('your-password')
+
+    const wallet = await walletManager.createWallet('my-agent-wallet', ['agent', 'trading'])
+
+    console.log(wallet)
+    // {
+    //   id: 'uuid-v4',
+    //   name: 'my-agent-wallet',
+    //   publicKey: 'HN7cAB...qYkE2',
+    //   createdAt: '2026-03-03T12:00:00.000Z',
+    //   tags: ['agent', 'trading']
+    // }
+    ```
+
+    **Implementation** (`src/core/wallet/wallet-manager.ts:29-46`):
+    ```typescript
+    async createWallet(name: string, tags: string[] = []): Promise<WalletInfo> {
+      const keypair = Keypair.generate()
+      const id = uuidv4()
+
+      await this.keystore.encrypt(keypair, this.password, {
+        id,
+        name,
+        tags,
+      })
+
+      return {
+        id,
+        name,
+        publicKey: keypair.publicKey.toBase58(),
+        createdAt: new Date().toISOString(),
+        tags,
+      }
+    }
+    ```
+
+    **Use Case:** Quick wallet creation for single-use agents or testing.
+  </Tab>
+
+  <Tab title="HD Derivation (Recommended)">
+    Create deterministic wallets from a master mnemonic using BIP-44 derivation.
+
+    ```typescript
+    // Generate a master mnemonic (24 words)
+    const mnemonic = WalletManager.generateMnemonic()
+    console.log(mnemonic)
+    // "abandon ability able about above absent absorb abstract..."
+
+    // Create multiple wallets from the same seed
+    const wallet1 = await walletManager.createDerivedWallet('agent-1', mnemonic, 0)
+    const wallet2 = await walletManager.createDerivedWallet('agent-2', mnemonic, 1)
+    const wallet3 = await walletManager.createDerivedWallet('agent-3', mnemonic, 2)
+
+    // Each wallet has a different address but can be recovered from the mnemonic
+    ```
+
+    **Derivation Path:** `m/44'/501'/{derivationIndex}'/0'`
+    - `44'` - BIP-44 standard
+    - `501'` - Solana coin type
+    - `{derivationIndex}'` - Unique index per wallet (0, 1, 2, ...)
+    - `0'` - Account index (always 0 for simplicity)
+
+    **Implementation** (`src/core/wallet/wallet-manager.ts:52-79`):
+    ```typescript
+    async createDerivedWallet(
+      name: string,
+      mnemonic: string,
+      derivationIndex: number,
+      tags: string[] = [],
+    ): Promise<WalletInfo> {
+      const seed = await bip39.mnemonicToSeed(mnemonic)
+      const path = `m/44'/501'/${derivationIndex}'/0'`
+      const derived = derivePath(path, seed.toString('hex'))
+      const keypair = Keypair.fromSeed(derived.key)
+      const id = uuidv4()
+
+      await this.keystore.encrypt(keypair, this.password, {
+        id,
+        name,
+        derivationIndex,
+        tags,
+      })
+
+      return { id, name, publicKey: keypair.publicKey.toBase58(), ... }
+    }
+    ```
+
+    **Use Case:** Multi-agent deployments where you want to recover all wallets from a single backup phrase.
+  </Tab>
+
+  <Tab title="Import Existing Wallet">
+    Import a wallet from an existing secret key (e.g., from Phantom, Solflare).
+
+    ```typescript
+    import bs58 from 'bs58'
+
+    // Import from base58 secret key
+    const secretKey = bs58.decode('your-secret-key-here')
+    const wallet = await walletManager.importWallet('imported-wallet', secretKey)
+    ```
+
+    **Implementation** (`src/core/wallet/wallet-manager.ts:91-112`):
+    ```typescript
+    async importWallet(
+      name: string,
+      secretKey: Uint8Array,
+      tags: string[] = [],
+    ): Promise<WalletInfo> {
+      const keypair = Keypair.fromSecretKey(secretKey)
+      const id = uuidv4()
+
+      await this.keystore.encrypt(keypair, this.password, {
+        id,
+        name,
+        tags,
+      })
+
+      return {
+        id,
+        name,
+        publicKey: keypair.publicKey.toBase58(),
+        createdAt: new Date().toISOString(),
+        tags,
+      }
+    }
+    ```
+
+    **Use Case:** Migrate existing wallets into Karen for agent management.
+  </Tab>
+</Tabs>
+
+## Keystore Encryption
+
+All private keys are encrypted at rest using **AES-256-GCM** with **scrypt** key derivation.
+
+### Encryption Process
+
+**Implementation** (`src/core/wallet/keystore.ts:40-95`):
+
+```typescript
+async encrypt(
+  keypair: Keypair,
+  password: string,
+  metadata: { id: string; name: string; derivationIndex?: number; tags?: string[] },
+): Promise<EncryptedKeystore> {
+  const salt = crypto.randomBytes(32)
+  const iv = crypto.randomBytes(16)
+
+  // Derive encryption key from password using scrypt
+  const derivedKey = await this.deriveKey(password, salt)
+
+  // Encrypt the secret key
+  const cipher = crypto.createCipheriv('aes-256-gcm', derivedKey, iv)
+  const secretKeyBuffer = Buffer.from(keypair.secretKey)
+  const encrypted = Buffer.concat([
+    cipher.update(secretKeyBuffer),
+    cipher.final(),
+  ])
+  const authTag = cipher.getAuthTag()
+
+  const keystore: EncryptedKeystore = {
+    version: 1,
+    id: metadata.id,
+    address: keypair.publicKey.toBase58(),
+    crypto: {
+      cipher: 'aes-256-gcm',
+      ciphertext: encrypted.toString('hex'),
+      cipherparams: {
+        iv: iv.toString('hex'),
+        tag: authTag.toString('hex'),
+      },
+      kdf: 'scrypt',
+      kdfparams: {
+        n: 16384,  // CPU/memory cost
+        r: 8,
+        p: 1,
+        dklen: 32, // 256-bit key
+        salt: salt.toString('hex'),
+      },
+    },
+    metadata: { name: metadata.name, createdAt: new Date().toISOString(), ... },
+  }
+
+  // Save to disk as JSON
+  fs.writeFileSync(`data/keystores/${metadata.id}.json`, JSON.stringify(keystore, null, 2))
+  return keystore
+}
+```
+
+### Keystore File Format
+
+**Example:** `data/keystores/550e8400-e29b-41d4-a716-446655440000.json`
+
+```json
+{
+  "version": 1,
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "address": "HN7cABqYkE2qYkE2qYkE2qYkE2qYkE2qYkE2qYkE2",
+  "crypto": {
+    "cipher": "aes-256-gcm",
+    "ciphertext": "a3f7b2c9d8e1f0...",
+    "cipherparams": {
+      "iv": "1a2b3c4d5e6f7g8h",
+      "tag": "9i8h7g6f5e4d3c2b"
+    },
+    "kdf": "scrypt",
+    "kdfparams": {
+      "n": 16384,
+      "r": 8,
+      "p": 1,
+      "dklen": 32,
+      "salt": "f8e7d6c5b4a39281"
+    }
+  },
+  "metadata": {
+    "name": "my-agent-wallet",
+    "createdAt": "2026-03-03T12:00:00.000Z",
+    "derivationIndex": 0,
+    "tags": ["agent", "trading"]
+  }
+}
+```
+
+### Scrypt Parameters
+
+**Source:** `src/core/wallet/keystore.ts:13-19`
+
+```typescript
+const SCRYPT_PARAMS = {
+  n: 16384,              // CPU/memory cost (2^14 iterations)
+  r: 8,                  // Block size
+  p: 1,                  // Parallelization factor
+  dklen: 32,             // Derived key length (256 bits)
+  maxmem: 64 * 1024 * 1024, // 64MB memory limit
+}
+```
+
+<Info>
+  **Security Note:** Scrypt is a memory-hard function that makes brute-force attacks expensive. The `n=16384` parameter balances security with performance for Node.js environments.
+</Info>
+
+## Balance Queries
+
+Karen provides methods to check SOL and SPL token balances.
+
+<Accordion title="Get SOL Balance">
+  ```typescript
+  const solBalance = await walletManager.getSolBalance(wallet.id)
+  console.log(`SOL: ${solBalance}`) // 2.5
+  ```
+
+  **Implementation** (`src/core/wallet/wallet-manager.ts:173-181`):
+  ```typescript
+  async getSolBalance(walletId: string): Promise<number> {
+    const wallet = this.getWallet(walletId)
+    if (!wallet) throw new Error(`Wallet not found: ${walletId}`)
+
+    const connection = getConnection()
+    const pubkey = new PublicKey(wallet.publicKey)
+    const lamports = await connection.getBalance(pubkey)
+    return lamports / LAMPORTS_PER_SOL
+  }
+  ```
+</Accordion>
+
+<Accordion title="Get All Balances (SOL + SPL Tokens)">
+  ```typescript
+  const balances = await walletManager.getBalances(wallet.id)
+  console.log(balances)
+  // {
+  //   sol: 2.5,
+  //   tokens: [
+  //     { mint: 'EPjF...V97', balance: 1000000, decimals: 6, uiBalance: 1.0 },  // USDC
+  //     { mint: 'DezX...UsdC', balance: 500000000, decimals: 9, uiBalance: 0.5 }, // Custom token
+  //   ]
+  // }
+  ```
+
+  **Implementation** (`src/core/wallet/wallet-manager.ts:186-216`):
+  ```typescript
+  async getBalances(walletId: string): Promise<WalletBalance> {
+    const wallet = this.getWallet(walletId)
+    if (!wallet) throw new Error(`Wallet not found: ${walletId}`)
+
+    const connection = getConnection()
+    const pubkey = new PublicKey(wallet.publicKey)
+
+    // Get SOL balance
+    const lamports = await connection.getBalance(pubkey)
+    const sol = lamports / LAMPORTS_PER_SOL
+
+    // Get SPL token accounts
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      pubkey,
+      { programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') },
+    )
+
+    const tokens: TokenBalance[] = tokenAccounts.value.map((ta) => {
+      const info = ta.account.data.parsed.info
+      return {
+        mint: info.mint,
+        balance: Number(info.tokenAmount.amount),
+        decimals: info.tokenAmount.decimals,
+        uiBalance: info.tokenAmount.uiAmount || 0,
+      }
+    })
+
+    return { sol, tokens }
+  }
+  ```
+</Accordion>
+
+<Accordion title="Request Devnet Airdrop">
+  ```typescript
+  const signature = await walletManager.requestAirdrop(wallet.id, 2.0)
+  console.log(`Airdrop signature: ${signature}`)
+  ```
+
+  **Implementation** (`src/core/wallet/wallet-manager.ts:221-244`):
+  ```typescript
+  async requestAirdrop(
+    walletId: string,
+    amountSol: number = 1,
+  ): Promise<string> {
+    const wallet = this.getWallet(walletId)
+    if (!wallet) throw new Error(`Wallet not found: ${walletId}`)
+
+    const connection = getConnection()
+    const pubkey = new PublicKey(wallet.publicKey)
+
+    const signature = await connection.requestAirdrop(
+      pubkey,
+      amountSol * LAMPORTS_PER_SOL,
+    )
+
+    // Wait for confirmation
+    const latestBlockhash = await connection.getLatestBlockhash()
+    await connection.confirmTransaction({
+      signature,
+      ...latestBlockhash,
+    })
+
+    return signature
+  }
+  ```
+</Accordion>
+
+## Wallet Operations
+
+<Tabs>
+  <Tab title="List All Wallets">
+    ```typescript
+    const wallets = walletManager.listWallets()
+    console.log(wallets)
+    // [
+    //   { id: 'uuid-1', name: 'agent-1', publicKey: 'HN7cA...', createdAt: '...', tags: ['agent'] },
+    //   { id: 'uuid-2', name: 'agent-2', publicKey: '9F3zX...', createdAt: '...', tags: ['agent'] },
+    // ]
+    ```
+
+    **Source:** `src/core/wallet/wallet-manager.ts:126-135`
+  </Tab>
+
+  <Tab title="Find Wallet by Name">
+    ```typescript
+    const wallet = walletManager.findWalletByName('agent-1')
+    if (wallet) {
+      console.log(`Found wallet: ${wallet.publicKey}`)
+    }
+    ```
+
+    **Source:** `src/core/wallet/wallet-manager.ts:156-159`
+  </Tab>
+
+  <Tab title="Delete Wallet">
+    ```typescript
+    const success = walletManager.deleteWallet(wallet.id)
+    if (success) {
+      console.log('Wallet deleted')
+    }
+    ```
+
+    <Warning>
+      Deleting a wallet permanently removes the encrypted keystore file. Make sure you have a backup of the mnemonic (for HD wallets) or secret key before deleting.
+    </Warning>
+
+    **Source:** `src/core/wallet/wallet-manager.ts:164-166`
+  </Tab>
+
+  <Tab title="Get Keypair (Decrypt)">
+    ```typescript
+    // Decrypt the wallet to get the Keypair for signing
+    const keypair = await walletManager.getKeypair(wallet.id)
+
+    // Now you can sign transactions
+    const transaction = new Transaction().add(/* instructions */)
+    transaction.sign(keypair)
+    ```
+
+    <Warning>
+      The keypair contains the unencrypted private key. Never log it or expose it to external systems.
+    </Warning>
+
+    **Source:** `src/core/wallet/wallet-manager.ts:119-121`
+  </Tab>
+</Tabs>
+
+## Security Best Practices
+
+<Note>
+  1. **Password Management:** Use a strong password for keystore encryption. Consider using environment variables or secure vaults.
+  2. **Backup Mnemonics:** Store master mnemonics in a secure offline location (hardware wallet, encrypted USB).
+  3. **Key Rotation:** For production systems, rotate wallets periodically by creating new derived wallets with incremented indexes.
+  4. **File Permissions:** Ensure `data/keystores/` has restrictive permissions (e.g., `chmod 700`).
+  5. **Devnet Only:** Karen defaults to Solana devnet. Never use production keys without additional security measures.
+</Note>
+
+## TypeScript Types
+
+**Source:** `src/core/types.ts:5-53`
+
+```typescript
+export interface WalletInfo {
+  id: string
+  name: string
+  publicKey: string
+  createdAt: string
+  derivationIndex?: number
+  tags: string[]
+}
+
+export interface WalletBalance {
+  sol: number
+  tokens: TokenBalance[]
+}
+
+export interface TokenBalance {
+  mint: string
+  symbol?: string
+  balance: number
+  decimals: number
+  uiBalance: number
+}
+
+export interface EncryptedKeystore {
+  version: 1
+  id: string
+  address: string
+  crypto: {
+    cipher: 'aes-256-gcm'
+    ciphertext: string
+    cipherparams: { iv: string; tag: string }
+    kdf: 'scrypt'
+    kdfparams: {
+      n: number
+      r: number
+      p: number
+      dklen: number
+      salt: string
+    }
+  }
+  metadata: {
+    name: string
+    createdAt: string
+    derivationIndex?: number
+    tags: string[]
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="diagram-project" href="/core-concepts/architecture">
+    Understand the full system architecture
+  </Card>
+  <Card title="Agents" icon="robot" href="/core-concepts/agents">
+    Learn how agents use wallets to make autonomous decisions
+  </Card>
+  <Card title="Security" icon="shield" href="/core-concepts/security">
+    Explore guardrails and transaction security
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create your first wallet in 2 minutes
+  </Card>
+</CardGroup>

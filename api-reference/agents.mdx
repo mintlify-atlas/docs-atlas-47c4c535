@@ -1,0 +1,252 @@
+---
+title: 'Agent Management'
+description: 'Create, manage, and interact with autonomous AI agents'
+---
+
+## List Agents
+
+Retrieve all configured agents and their current status.
+
+<RequestExample>
+```bash cURL
+curl https://api.karen.dev/api/v1/agents \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+</RequestExample>
+
+<ResponseField name="agents" type="array">
+  Array of agent configuration objects
+  <Expandable title="Agent object">
+    <ResponseField name="id" type="string">
+      Unique agent identifier
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Agent name
+    </ResponseField>
+    <ResponseField name="walletId" type="string">
+      Associated wallet ID
+    </ResponseField>
+    <ResponseField name="llmProvider" type="string">
+      LLM provider: openai, anthropic, grok, or gemini
+    </ResponseField>
+    <ResponseField name="llmModel" type="string">
+      Model identifier (e.g., gpt-4, claude-3-opus)
+    </ResponseField>
+    <ResponseField name="strategy" type="string">
+      Agent's trading/action strategy
+    </ResponseField>
+    <ResponseField name="guardrails" type="object">
+      Guardrail configuration for this agent
+    </ResponseField>
+    <ResponseField name="loopIntervalMs" type="number">
+      Decision loop interval in milliseconds
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Agent status: idle, running, paused, stopped, or error
+    </ResponseField>
+    <ResponseField name="createdAt" type="string">
+      ISO 8601 timestamp of agent creation
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Create Agent
+
+<Warning>Requires admin authentication</Warning>
+
+Create a new autonomous agent with custom configuration.
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/agents \
+  -H "Authorization: Bearer ADMIN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "momentum-trader",
+    "walletId": "wallet_abc",
+    "llmProvider": "anthropic",
+    "llmModel": "claude-3-opus-20240229",
+    "strategy": "Trade based on momentum indicators",
+    "loopIntervalMs": 60000,
+    "guardrails": {
+      "maxSolPerTransaction": 1.0,
+      "maxTransactionsPerMinute": 3,
+      "dailySpendingLimitSol": 5.0
+    }
+  }'
+```
+</RequestExample>
+
+<ParamField body="name" type="string" required>
+  Agent name
+</ParamField>
+
+<ParamField body="walletId" type="string" required>
+  Wallet ID for the agent to use
+</ParamField>
+
+<ParamField body="llmProvider" type="string" required>
+  LLM provider: "openai", "anthropic", "grok", or "gemini"
+</ParamField>
+
+<ParamField body="llmModel" type="string" required>
+  Model identifier
+</ParamField>
+
+<ParamField body="strategy" type="string" required>
+  Agent's strategy description
+</ParamField>
+
+<ParamField body="loopIntervalMs" type="number" default="60000">
+  Decision loop interval in milliseconds
+</ParamField>
+
+<ParamField body="guardrails" type="object">
+  Custom guardrail configuration
+  <Expandable title="Guardrails object">
+    <ParamField body="maxSolPerTransaction" type="number" default="2.0">
+      Maximum SOL per transaction
+    </ParamField>
+    <ParamField body="maxTransactionsPerMinute" type="number" default="5">
+      Rate limit for transactions
+    </ParamField>
+    <ParamField body="dailySpendingLimitSol" type="number" default="10.0">
+      Daily spending limit in SOL
+    </ParamField>
+    <ParamField body="allowedPrograms" type="array">
+      Whitelist of allowed program IDs
+    </ParamField>
+    <ParamField body="blockedAddresses" type="array">
+      Blacklist of blocked addresses
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="id" type="string">
+  Created agent ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Agent name
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Initial status (idle)
+</ResponseField>
+
+---
+
+## Start Agent
+
+<Warning>Requires admin authentication</Warning>
+
+Start an agent's autonomous decision loop.
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/agents/AGENT_ID/start \
+  -H "Authorization: Bearer ADMIN_SECRET"
+```
+</RequestExample>
+
+<ResponseField name="status" type="string">
+  Confirmation: "started"
+</ResponseField>
+
+---
+
+## Stop Agent
+
+<Warning>Requires admin authentication</Warning>
+
+Stop an agent's autonomous decision loop.
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/agents/AGENT_ID/stop \
+  -H "Authorization: Bearer ADMIN_SECRET"
+```
+</RequestExample>
+
+<ResponseField name="status" type="string">
+  Confirmation: "stopped"
+</ResponseField>
+
+---
+
+## Chat with Agent
+
+Send a message to an agent and receive a response.
+
+<RequestExample>
+```bash cURL
+curl -X POST https://api.karen.dev/api/v1/agents/AGENT_ID/chat \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is your current portfolio value?"}'
+```
+</RequestExample>
+
+<ParamField body="message" type="string" required>
+  Message to send to the agent
+</ParamField>
+
+<ResponseField name="response" type="string">
+  Agent's response message
+</ResponseField>
+
+---
+
+## Agent Status Values
+
+- `idle` - Agent created but not running
+- `running` - Agent actively making decisions
+- `paused` - Agent temporarily paused
+- `stopped` - Agent stopped
+- `error` - Agent encountered an error
+
+---
+
+## Example Agent Workflow
+
+```bash
+# 1. Create a wallet for the agent
+curl -X POST https://api.karen.dev/api/v1/wallets \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"name": "trader-wallet"}'
+
+# Response: {"walletId": "wallet_xyz", ...}
+
+# 2. Fund the wallet (devnet)
+curl -X POST https://api.karen.dev/api/v1/wallets/wallet_xyz/airdrop \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"amount": 2}'
+
+# 3. Create an agent (admin only)
+curl -X POST https://api.karen.dev/api/v1/agents \
+  -H "Authorization: Bearer ADMIN_SECRET" \
+  -d '{
+    "name": "my-trader",
+    "walletId": "wallet_xyz",
+    "llmProvider": "anthropic",
+    "llmModel": "claude-3-sonnet-20240229",
+    "strategy": "Conservative SOL/USDC trading",
+    "guardrails": {
+      "maxSolPerTransaction": 0.5,
+      "dailySpendingLimitSol": 2.0
+    }
+  }'
+
+# Response: {"id": "agent_abc", ...}
+
+# 4. Start the agent
+curl -X POST https://api.karen.dev/api/v1/agents/agent_abc/start \
+  -H "Authorization: Bearer ADMIN_SECRET"
+
+# 5. Chat with the agent
+curl -X POST https://api.karen.dev/api/v1/agents/agent_abc/chat \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"message": "What trades have you made today?"}'
+```

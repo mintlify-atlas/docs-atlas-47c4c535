@@ -1,0 +1,248 @@
+---
+title: 'Wallet Operations'
+description: 'Basic wallet skills for checking balances, transferring SOL, and requesting airdrops'
+---
+
+## Overview
+
+Wallet operation skills provide fundamental blockchain interactions that every agent needs. These are typically the first skills an agent uses when starting a new task.
+
+## check_balance
+
+Check your current wallet balances including SOL and all SPL tokens.
+
+### Parameters
+
+This skill requires no parameters.
+
+### Returns
+
+- Wallet name and public key
+- SOL balance (formatted to 4 decimals)
+- List of all SPL token holdings with:
+  - Mint address
+  - UI balance
+  - Decimal places
+
+### Example Invocation
+
+```json
+{
+  "skill": "check_balance",
+  "params": {}
+}
+```
+
+### Example Response
+
+```
+Wallet: Agent-Trader (7xKq2R...abc123)
+SOL: 5.2340 SOL
+
+Tokens:
+  GHJ8...def456: 1000.50 (9 decimals)
+  ABC9...ghi789: 250.00 (6 decimals)
+```
+
+<Tip>
+**Best Practice:** Always check your balance before attempting swaps or transfers to ensure you have sufficient funds.
+</Tip>
+
+---
+
+## transfer
+
+Send SOL to another wallet address.
+
+### Parameters
+
+<ParamField path="to" type="string" required>
+  Recipient wallet address in base58 format (Solana public key)
+</ParamField>
+
+<ParamField path="amount" type="number" required>
+  Amount of SOL to send (e.g., 0.5 for half a SOL)
+</ParamField>
+
+### Constraints
+
+<Warning>
+- Subject to spending limits and daily caps (default: 2 SOL per transaction, 10 SOL daily)
+- Recipient must be a valid Solana address
+- Cannot transfer to blocked addresses
+- Transaction will be blocked if it exceeds guardrail limits
+</Warning>
+
+### Example Invocation
+
+```json
+{
+  "skill": "transfer",
+  "params": {
+    "to": "7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL",
+    "amount": 0.5
+  }
+}
+```
+
+### Example Response
+
+```
+Successfully sent 0.5 SOL to 7xKq2R3vN9YHpqF4ZnW8sJmK5tDxE2aG1bC9hR6fT3wL
+Transaction: 2ZE7xQ8...signature
+```
+
+### Guardrail Blocked Example
+
+```
+Transfer blocked by guardrails: Transaction amount 5.0 SOL exceeds maximum per-transaction limit of 2.0 SOL
+```
+
+---
+
+## airdrop
+
+Request devnet SOL from the Solana faucet to fund your wallet.
+
+<Note>
+**Devnet Only:** This skill only works on Solana devnet. Mainnet does not have a faucet.
+</Note>
+
+### Parameters
+
+<ParamField path="amount" type="number" required>
+  Amount of SOL to request. Maximum 2 SOL per request. The system will automatically cap requests at 2.
+</ParamField>
+
+### Example Invocation
+
+```json
+{
+  "skill": "airdrop",
+  "params": {
+    "amount": 2
+  }
+}
+```
+
+### Example Response
+
+```
+Successfully airdropped 2 SOL to your wallet!
+Transaction: 4YT9pL6...signature
+```
+
+<Tip>
+**Agent Strategy:** If your balance is low and you're on devnet, request an airdrop before attempting other operations.
+</Tip>
+
+---
+
+## wait
+
+Do nothing this cycle. Use when no action is appropriate based on current market conditions or wallet state.
+
+### Parameters
+
+<ParamField path="reason" type="string" required>
+  A clear explanation of why you're choosing to wait. This is logged and helps with debugging agent behavior.
+</ParamField>
+
+### When to Use Wait
+
+- Balance is too low for meaningful action
+- Waiting for a transaction to confirm before next step
+- Market conditions are unfavorable (e.g., high slippage)
+- Insufficient information to make a decision
+- Token price is outside acceptable range
+
+### Example Invocation
+
+```json
+{
+  "skill": "wait",
+  "params": {
+    "reason": "Balance too low for any meaningful action. Need to request airdrop next cycle."
+  }
+}
+```
+
+### Example Response
+
+```
+Waiting. Reason: Balance too low for any meaningful action. Need to request airdrop next cycle.
+```
+
+<Info>
+**Remember:** It's better to wait than to make a bad trade or violate spending limits. The `wait` skill is a valid strategic choice.
+</Info>
+
+---
+
+## Common Workflow Example
+
+Here's a typical sequence of wallet operations for a new agent:
+
+### Cycle 1: Check Balance
+```json
+{
+  "skill": "check_balance",
+  "params": {}
+}
+```
+**Response:** `SOL: 0.0000 SOL`
+
+### Cycle 2: Request Airdrop
+```json
+{
+  "skill": "airdrop",
+  "params": {
+    "amount": 2
+  }
+}
+```
+**Response:** `Successfully airdropped 2 SOL to your wallet!`
+
+### Cycle 3: Verify New Balance
+```json
+{
+  "skill": "check_balance",
+  "params": {}
+}
+```
+**Response:** `SOL: 2.0000 SOL`
+
+### Cycle 4: Transfer to Another Wallet
+```json
+{
+  "skill": "transfer",
+  "params": {
+    "to": "5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i",
+    "amount": 0.1
+  }
+}
+```
+**Response:** `Successfully sent 0.1 SOL to 5xZ9kL2pW4hR6tN8vF3dE1aC7bG9mJ5sT2qY4nX6uH8i`
+
+---
+
+## Error Handling
+
+All wallet operations include comprehensive error handling:
+
+- **Invalid address:** Returns error message with validation details
+- **Insufficient balance:** Transaction fails with clear error
+- **Guardrail violation:** Transaction is blocked (status: `blocked`) with reason
+- **Network errors:** Transaction fails with network error details
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="DeFi Operations" icon="arrow-right-arrow-left" href="/skills/defi">
+    Learn how to swap tokens using Jupiter DEX
+  </Card>
+  
+  <Card title="Token Management" icon="coins" href="/skills/token-management">
+    Create and manage your own SPL tokens
+  </Card>
+</CardGroup>
