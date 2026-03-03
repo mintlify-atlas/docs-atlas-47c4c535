@@ -23,22 +23,22 @@ This is ideal for:
 
 <CodeGroup>
 ```bash npm
-npm install karen-wallet
+npm install karen
 ```
 
 ```bash yarn
-yarn add karen-wallet
+yarn add karen
 ```
 
 ```bash pnpm
-pnpm add karen-wallet
+pnpm add karen
 ```
 </CodeGroup>
 
 <Note>
   Package name is tentative. For now, clone the repo and import directly:
   ```bash
-  git clone https://github.com/yourusername/karen.git
+  git clone https://github.com/Don-Vicks/karen.git
   cd karen
   npm install
   npm run build
@@ -101,7 +101,7 @@ export * from './protocols'
 ### Basic Wallet Operations
 
 ```typescript
-import { WalletManager, TransactionEngine, Guardrails, AuditLogger } from 'karen-wallet'
+import { WalletManager, TransactionEngine, Guardrails, AuditLogger } from 'karen'
 
 // Initialize services
 const password = 'your-secure-password'
@@ -148,7 +148,7 @@ Manages encrypted keystores, wallet creation, and balance queries.
 ### Constructor
 
 ```typescript
-import { WalletManager } from 'karen-wallet'
+import { WalletManager } from 'karen'
 
 const walletManager = new WalletManager(
   password: string,           // Keystore encryption password
@@ -264,7 +264,7 @@ Executes transactions with guardrails, audit logging, and transaction history.
 ### Constructor
 
 ```typescript
-import { TransactionEngine, Guardrails, AuditLogger } from 'karen-wallet'
+import { TransactionEngine, Guardrails, AuditLogger } from 'karen'
 
 const txEngine = new TransactionEngine(
   walletManager: WalletManager,
@@ -346,7 +346,7 @@ Karen includes adapters for common Solana DeFi operations.
 ### JupiterAdapter - Token Swaps
 
 ```typescript
-import { JupiterAdapter, KNOWN_TOKENS } from 'karen-wallet'
+import { JupiterAdapter, KNOWN_TOKENS } from 'karen'
 
 const jupiter = new JupiterAdapter()
 
@@ -370,7 +370,7 @@ console.log(KNOWN_TOKENS.USDC)  // EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
 ### TokenLauncherAdapter - Create SPL Tokens
 
 ```typescript
-import { TokenLauncherAdapter } from 'karen-wallet'
+import { TokenLauncherAdapter } from 'karen'
 
 const launcher = new TokenLauncherAdapter()
 
@@ -407,7 +407,7 @@ const sig = await launcher.revokeMintAuthority(
 ### StakingAdapter - Native Staking
 
 ```typescript
-import { StakingAdapter } from 'karen-wallet'
+import { StakingAdapter } from 'karen'
 
 const staking = new StakingAdapter()
 
@@ -437,7 +437,7 @@ await staking.withdrawStake(walletManager, wallet.id, stakeResult.stakeAccount)
 ### WrappedSolAdapter - wSOL Operations
 
 ```typescript
-import { WrappedSolAdapter } from 'karen-wallet'
+import { WrappedSolAdapter } from 'karen'
 
 const wsol = new WrappedSolAdapter()
 
@@ -453,7 +453,7 @@ console.log('Unwrapped:', unwrapResult.amount, 'wSOL')
 ### SplTokenAdapter - Token Account Management
 
 ```typescript
-import { SplTokenAdapter } from 'karen-wallet'
+import { SplTokenAdapter } from 'karen'
 
 const spl = new SplTokenAdapter()
 
@@ -482,7 +482,7 @@ console.log('Rent reclaimed:', closeResult.rentReclaimed, 'SOL')
 ### Using AgentRuntime
 
 ```typescript
-import { AgentRuntime, createDefaultSkillRegistry, MemoryStore } from 'karen-wallet'
+import { AgentRuntime, createDefaultSkillRegistry, MemoryStore } from 'karen'
 
 const config = {
   id: 'agent-1',
@@ -523,7 +523,7 @@ agent.stop()
 ### Using Orchestrator (Multiple Agents)
 
 ```typescript
-import { Orchestrator } from 'karen-wallet'
+import { Orchestrator } from 'karen'
 
 const orchestrator = new Orchestrator(
   walletManager,
@@ -557,7 +557,7 @@ orchestrator.stopAll()
 ## Guardrails Configuration
 
 ```typescript
-import { Guardrails, AuditLogger } from 'karen-wallet'
+import { Guardrails, AuditLogger } from 'karen'
 
 const customGuardrails = new Guardrails(
   {
@@ -579,7 +579,7 @@ const customGuardrails = new Guardrails(
 ## API Server Integration
 
 ```typescript
-import { ApiServer } from 'karen-wallet'
+import { ApiServer } from 'karen'
 
 const apiServer = new ApiServer(
   walletManager,
@@ -655,7 +655,7 @@ import {
   Guardrails,
   AuditLogger,
   JupiterAdapter
-} from 'karen-wallet'
+} from 'karen'
 
 async function main() {
   // Setup

@@ -112,7 +112,7 @@ External Agents (OpenClaw, LangChain, etc.)
 ## Directory Structure
 
 ```
-agentic-wallet/
+karen/
 ├── src/
 │   ├── core/                 # Core wallet & transaction infrastructure
 │   │   ├── wallet/           # WalletManager, Keystore, HD derivation
@@ -206,12 +206,12 @@ agentic-wallet/
 
     **Installation:**
     ```bash
-    npm install @your-org/karen
+    npm install karen
     ```
 
     **Example:**
     ```typescript
-    import { WalletManager, TransactionEngine, Guardrails } from '@your-org/karen'
+    import { WalletManager, TransactionEngine, Guardrails } from 'karen'
 
     const walletManager = new WalletManager('your-password')
     const guardrails = new Guardrails()
